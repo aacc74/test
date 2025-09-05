@@ -318,7 +318,7 @@
     </form>
     
     <div class="mt-8 text-center text-sm text-gray-600">
-      <p>Sistema de gestión de ventas v3.4</p>
+      <p>Sistema de gestión de ventas v3.5</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios - Todos los derechos reservados</p>
     </div>
   </div>
@@ -470,7 +470,7 @@
     
     <!-- Footer -->
     <footer class="mt-8 py-6 text-center text-gray-600 text-sm">
-      <p>Sistema de Gestión de Ventas v3.4</p>
+      <p>Sistema de Gestión de Ventas v3.5</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios. Todos los derechos reservados.</p>
     </footer>
   </div>
@@ -1111,6 +1111,7 @@
             ...sale,
             businessDate: toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)))
         };
+        // Usamos el ID de la venta (timestamp) como ID del documento para evitar duplicados.
         const docRef = db.collection('ventas').doc(String(sale.id));
         await docRef.set(saleWithBusinessDate);
         console.log("Venta respaldada en Firebase con ID:", sale.id);
@@ -1165,12 +1166,12 @@
             console.log(`Consulta por 'timestamp' encontró ${timestampSales.length} ventas.`);
 
             timestampSales.forEach(sale => {
-                if (!saleIds.has(sale.id)) {
-                    // Verificamos si realmente pertenece al rango de "días de negocio"
+                const saleId = sale.id || sale.timestamp; // Compatibilidad con datos muy antiguos
+                if (!saleIds.has(saleId)) {
                     const saleBusinessDateStr = toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)));
                     if (saleBusinessDateStr >= toYYYYMMDD(startDate) && saleBusinessDateStr <= toYYYYMMDD(endDate)) {
                         allSales.push(sale);
-                        saleIds.add(sale.id);
+                        saleIds.add(saleId);
                     }
                 }
             });
@@ -2165,6 +2166,19 @@
       const ws = XLSX.utils.aoa_to_sheet(excelData);
       XLSX.utils.book_append_sheet(wb, ws, "Todas las ventas");
       return wb;
+    }
+    
+    // *** FUNCIÓN RESTAURADA ***
+    function exportToExcel() {
+      const storeData = salesData[currentStore];
+      if (!storeData || storeData.sales.length === 0) {
+        showToast('No hay ventas para exportar en el almacenamiento local', 'warning');
+        return;
+      }
+      
+      const wb = generateWorkbookForStore(currentStore, storeData.sales);
+      XLSX.writeFile(wb, `Ventas_${currentStore}.xlsx`);
+      showToast('Exportación completada', 'success');
     }
     
     async function showAdminAnalytics() {
