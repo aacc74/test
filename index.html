@@ -318,7 +318,7 @@
     </form>
     
     <div class="mt-8 text-center text-sm text-gray-600">
-      <p>Sistema de gestión de ventas v3.5</p>
+      <p>Sistema de gestión de ventas v3.6</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios - Todos los derechos reservados</p>
     </div>
   </div>
@@ -470,7 +470,7 @@
     
     <!-- Footer -->
     <footer class="mt-8 py-6 text-center text-gray-600 text-sm">
-      <p>Sistema de Gestión de Ventas v3.5</p>
+      <p>Sistema de Gestión de Ventas v3.6</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios. Todos los derechos reservados.</p>
     </footer>
   </div>
@@ -1066,11 +1066,12 @@
     let activeSessions = {};
     let inactivityTimer;
 
-    // --- LÓGICA DE FECHA DE NEGOCIO ---
-    function getBusinessDate(dateObject = new Date()) {
-        const date = new Date(dateObject);
-        date.setHours(date.getHours() - 8); 
-        return date;
+    // --- LÓGICA DE FECHA Y HORA (COSTA RICA UTC-6) ---
+    function getCurrentCostaRicaDate() {
+        const now = new Date();
+        // Restar 6 horas a la hora UTC para obtener la hora de Costa Rica
+        now.setHours(now.getUTCHours() - 6);
+        return now;
     }
 
     function toYYYYMMDD(date) {
@@ -1079,6 +1080,18 @@
         const month = (d.getMonth() + 1).toString().padStart(2, '0');
         const day = d.getDate().toString().padStart(2, '0');
         return `${year}-${month}-${day}`;
+    }
+
+    function formatDateForCostaRica(dateString) {
+        const date = new Date(dateString);
+        // Opciones para formatear la fecha a la zona horaria de Costa Rica (America/Costa_Rica)
+        const options = {
+            year: 'numeric', month: 'numeric', day: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+            hour12: false, // Usar formato de 24 horas
+            timeZone: 'America/Costa_Rica'
+        };
+        return new Intl.DateTimeFormat('es-CR', options).format(date);
     }
 
     // Funciones Toast
@@ -1107,13 +1120,8 @@
     // --- FUNCIONES DE FIREBASE (ACTUALIZADAS) ---
     async function backupSaleToFirebase(sale) {
       try {
-        const saleWithBusinessDate = {
-            ...sale,
-            businessDate: toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)))
-        };
-        // Usamos el ID de la venta (timestamp) como ID del documento para evitar duplicados.
         const docRef = db.collection('ventas').doc(String(sale.id));
-        await docRef.set(saleWithBusinessDate);
+        await docRef.set(sale);
         console.log("Venta respaldada en Firebase con ID:", sale.id);
       } catch (error) {
         console.error("Error al respaldar venta:", error);
@@ -1122,66 +1130,30 @@
     }
 
     async function getSalesFromFirebase(store, startDate, endDate) {
-        let allSales = [];
-        const saleIds = new Set();
-
-        // 1. Intenta la consulta nueva y más eficiente con 'businessDate'
-        try {
-            const startBusinessDateStr = toYYYYMMDD(startDate);
-            const endBusinessDateStr = toYYYYMMDD(endDate);
-            let query = db.collection('ventas');
-            if (store && store !== 'all') {
-                query = query.where('store', '==', store);
-            }
-            query = query.where('businessDate', '>=', startBusinessDateStr).where('businessDate', '<=', endBusinessDateStr);
-            const snapshot = await query.get();
-            snapshot.docs.forEach(doc => {
-                const sale = { id: doc.id, ...doc.data() };
-                if (!saleIds.has(sale.id)) {
-                    allSales.push(sale);
-                    saleIds.add(sale.id);
-                }
-            });
-            console.log(`Consulta por 'businessDate' encontró ${allSales.length} ventas.`);
-        } catch (error) {
-            console.warn("La consulta por 'businessDate' falló (puede ser por falta de índice). Intentando con 'timestamp'.", error);
-        }
-
-        // 2. Plan B: Consulta por 'timestamp' para datos antiguos
-        const startTimestamp = new Date(startDate);
-        startTimestamp.setHours(8, 0, 0, 0); // 8 AM del día de inicio
-        const endTimestamp = new Date(endDate);
-        endTimestamp.setHours(8, 0, 0, 0); // 8 AM del día siguiente al de fin
-        endTimestamp.setDate(endTimestamp.getDate() + 1);
+        // Las fechas de entrada son del tipo 'YYYY-MM-DD'.
+        // Se interpretan como inicio y fin del día en Costa Rica.
+        const startUTC = new Date(`${startDate}T00:00:00.000-06:00`);
+        const endUTC = new Date(`${endDate}T23:59:59.999-06:00`);
 
         try {
             let query = db.collection('ventas');
             if (store && store !== 'all') {
                 query = query.where('store', '==', store);
             }
-            query = query.where('timestamp', '>=', startTimestamp.toISOString()).where('timestamp', '<', endTimestamp.toISOString());
-            const snapshot = await query.get();
+            // Realizamos la consulta con el rango de fechas convertido a UTC.
+            query = query.where('timestamp', '>=', startUTC.toISOString())
+                         .where('timestamp', '<=', endUTC.toISOString());
             
-            const timestampSales = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            console.log(`Consulta por 'timestamp' encontró ${timestampSales.length} ventas.`);
+            const snapshot = await query.get();
+            const sales = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            console.log(`Consulta por 'timestamp' encontró ${sales.length} ventas.`);
+            return sales;
 
-            timestampSales.forEach(sale => {
-                const saleId = sale.id || sale.timestamp; // Compatibilidad con datos muy antiguos
-                if (!saleIds.has(saleId)) {
-                    const saleBusinessDateStr = toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)));
-                    if (saleBusinessDateStr >= toYYYYMMDD(startDate) && saleBusinessDateStr <= toYYYYMMDD(endDate)) {
-                        allSales.push(sale);
-                        saleIds.add(saleId);
-                    }
-                }
-            });
         } catch(error) {
-            console.error("La consulta por 'timestamp' también falló.", error);
-            showToast('Error al obtener ventas. Revise los permisos de Firestore.', 'error');
+            console.error("La consulta de ventas falló.", error);
+            showToast('Error al obtener ventas. Revise los permisos y los índices de Firestore.', 'error');
+            return [];
         }
-        
-        console.log(`Total de ventas combinadas y únicas: ${allSales.length}`);
-        return allSales;
     }
 
     // --- ALMACENAMIENTO LOCAL ---
@@ -1203,7 +1175,7 @@
     }
     
     function calculateTodayStats(store) {
-        const todayBusinessDateStr = toYYYYMMDD(getBusinessDate());
+        const todayStr = toYYYYMMDD(getCurrentCostaRicaDate());
         initializeStoreData(store);
         const storeData = salesData[store];
 
@@ -1212,8 +1184,9 @@
         }
 
         const todaySalesData = storeData.sales.filter(sale => {
-            const saleBusinessDateStr = toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)));
-            return saleBusinessDateStr === todayBusinessDateStr;
+            const saleDateCR = new Date(sale.timestamp);
+            saleDateCR.setHours(saleDateCR.getUTCHours() - 6);
+            return toYYYYMMDD(saleDateCR) === todayStr;
         });
 
         const stats = {
@@ -1429,7 +1402,7 @@
         return;
       }
       
-      const saleTimestamp = new Date();
+      const saleTimestamp = new Date(); // Fecha y hora actual en UTC
       const sale = {
         id: saleTimestamp.getTime(),
         store: currentStore,
@@ -1437,13 +1410,13 @@
         items: [...saleItems],
         payment: paymentSelect.value,
         manualTime: manualTimeInput.value || null,
-        timestamp: saleTimestamp.toISOString()
+        timestamp: saleTimestamp.toISOString() // Guardar en formato estándar UTC
       };
       
       try {
         initializeStoreData(currentStore);
         salesData[currentStore].sales.push(sale);
-        saveLocalStorageData(); // Guardado explícito en LocalStorage
+        saveLocalStorageData(); 
         
         await backupSaleToFirebase(sale);
         
@@ -1483,11 +1456,11 @@
       }
       
       const lastSale = sales[sales.length - 1];
-      const date = new Date(lastSale.timestamp);
-      let formattedDate = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+      let formattedDate = formatDateForCostaRica(lastSale.timestamp);
       
       if (lastSale.manualTime) {
-        formattedDate = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${lastSale.manualTime}`;
+        const datePart = formattedDate.split(',')[0];
+        formattedDate = `${datePart}, ${lastSale.manualTime}`;
       }
       
       let itemsHtml = lastSale.items.map(item => 
@@ -1642,27 +1615,10 @@
             return;
         }
 
-        const startDate = new Date(startDateVal);
-        const endDate = new Date(endDateVal);
-
         const store = isMasterUser ? storeFilter.value : currentStore;
-
         salesList.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando ventas...</div>';
-
-        let allSales = [];
-        if (isMasterUser) {
-            allSales = await getSalesFromFirebase(store, startDate, endDate);
-        } else {
-            const localSales = (salesData[store] && salesData[store].sales) ? salesData[store].sales : [];
-            const startBusinessDateStr = toYYYYMMDD(startDate);
-            const endBusinessDateStr = toYYYYMMDD(endDate);
-
-            allSales = localSales.filter(sale => {
-                const saleBusinessDateStr = toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)));
-                return saleBusinessDateStr >= startBusinessDateStr && saleBusinessDateStr <= endBusinessDateStr;
-            });
-        }
         
+        const allSales = await getSalesFromFirebase(store, startDateVal, endDateVal);
         displaySales(allSales, store);
     }
     
@@ -1729,11 +1685,11 @@
     }
     
     function createSaleElement(sale) {
-      const dateObj = new Date(sale.timestamp);
-      let formattedDate = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()} ${dateObj.getHours()}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+      let formattedDate = formatDateForCostaRica(sale.timestamp);
       
       if (sale.manualTime) {
-        formattedDate = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()} ${sale.manualTime}`;
+        const datePart = formattedDate.split(',')[0];
+        formattedDate = `${datePart}, ${sale.manualTime}`;
       }
       
       let itemsHtml = sale.items.map(item => 
@@ -1783,14 +1739,11 @@
             return;
         }
 
-        const startDate = new Date(startDateVal);
-        const endDate = new Date(endDateVal);
-
         const store = adminStoreFilter.value;
         
         adminSalesList.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando ventas...</div>';
         
-        const firebaseSales = await getSalesFromFirebase(store, startDate, endDate);
+        const firebaseSales = await getSalesFromFirebase(store, startDateVal, endDateVal);
         
         adminSalesList.innerHTML = '';
         if (firebaseSales.length === 0) {
@@ -1824,9 +1777,9 @@
     }
 
     async function showAdminItemsInspection() {
-        const today = getBusinessDate();
-        inspectionStartDate.value = toYYYYMMDD(today);
-        inspectionEndDate.value = toYYYYMMDD(today);
+        const todayStr = toYYYYMMDD(getCurrentCostaRicaDate());
+        inspectionStartDate.value = todayStr;
+        inspectionEndDate.value = todayStr;
         inspectionStoreFilter.value = 'all';
         adminItemsInspectionModal.classList.add('show');
         await loadAdminItemsInspection();
@@ -1841,13 +1794,10 @@
             showToast('Por favor, seleccione un rango de fechas.', 'warning');
             return;
         }
-
-        const startDate = new Date(startDateVal);
-        const endDate = new Date(endDateVal);
         
         adminItemsInspectionContent.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando resumen...</div>';
 
-        const sales = await getSalesFromFirebase(store, startDate, endDate);
+        const sales = await getSalesFromFirebase(store, startDateVal, endDateVal);
 
         if (sales.length === 0) {
             adminItemsInspectionContent.innerHTML = '<p class="text-gray-500 text-center py-8">No hay artículos vendidos en el período seleccionado.</p>';
@@ -1917,11 +1867,11 @@
     }
 
     function createAdminSaleElement(sale) {
-      const dateObj = new Date(sale.timestamp);
-      let formattedDate = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()} ${dateObj.getHours()}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+      let formattedDate = formatDateForCostaRica(sale.timestamp);
       
       if (sale.manualTime) {
-        formattedDate = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()} ${sale.manualTime}`;
+        const datePart = formattedDate.split(',')[0];
+        formattedDate = `${datePart}, ${sale.manualTime}`;
       }
       
       let itemsHtml = sale.items.map(item => 
@@ -2010,15 +1960,10 @@
       excelData.push(headers);
       
       sales.forEach(sale => {
-        const dateObj = new Date(sale.timestamp);
-        const date = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()}`;
-        let time = `${dateObj.getHours()}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+        const formattedCR = formatDateForCostaRica(sale.timestamp);
+        const [date, time] = formattedCR.split(',');
         
-        if (sale.manualTime) {
-          time = sale.manualTime;
-        }
-        
-        const row = [date, time, sale.store, sale.payment];
+        const row = [date, sale.manualTime || time, sale.store, sale.payment];
         
         const categoryCounts = {};
         categories.forEach(cat => categoryCounts[cat] = 0);
@@ -2043,8 +1988,8 @@
     }
     
     async function exportStoreToExcel(storeName) {
-        const startDate = new Date(adminStartDate.value);
-        const endDate = new Date(adminEndDate.value);
+        const startDate = adminStartDate.value;
+        const endDate = adminEndDate.value;
       
       try {
         const sales = await getSalesFromFirebase(storeName, startDate, endDate);
@@ -2098,8 +2043,8 @@
     }
     
     async function exportAllInOneExcel() {
-        const startDate = new Date(adminStartDate.value);
-        const endDate = new Date(adminEndDate.value);
+        const startDate = adminStartDate.value;
+        const endDate = adminEndDate.value;
       
       try {
         exportStatus.classList.remove('hidden');
@@ -2113,7 +2058,7 @@
           return;
         }
         
-        const wb = generateWorkbookForAllStores(allSales);
+        const wb = generateWorkbookForStore("Todas las ventas", allSales);
         XLSX.writeFile(wb, `Todas_las_ventas.xlsx`);
         showToast('Exportación completa en un solo archivo', 'success');
       } catch (error) {
@@ -2122,53 +2067,7 @@
         exportStatus.classList.add('hidden');
       }
     }
-
-    function generateWorkbookForAllStores(sales) {
-      const categories = [
-        'Articulos', 'Articulos (P)', 'Bisuteria', 'Bisuteria (P)', 
-        'Zapato', 'Zapato (P)', 'Prenda', 'Prenda (P)', 'B.Eco',
-        'Articulos (v)', 'Articulos (P) (v)', 'Bisuteria (v)', 'Bisuteria (P) (v)', 
-        'Zapato (v)', 'Zapato (P) (v)', 'Prenda (v)', 'Prenda (P) (v)', 'B.Eco (v)'
-      ];
-      
-      const excelData = [];
-      const headers = ['Fecha', 'Hora', 'Tienda', 'Método de Pago', ...categories];
-      excelData.push(headers);
-      
-      sales.forEach(sale => {
-        const dateObj = new Date(sale.timestamp);
-        const date = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()}`;
-        let time = `${dateObj.getHours()}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
-        
-        if (sale.manualTime) {
-          time = sale.manualTime;
-        }
-        
-        const row = [date, time, sale.store, sale.payment];
-        
-        const categoryCounts = {};
-        categories.forEach(cat => categoryCounts[cat] = 0);
-        
-        sale.items.forEach(item => {
-          if (categoryCounts.hasOwnProperty(item.category)) {
-            categoryCounts[item.category] += item.quantity;
-          }
-        });
-        
-        categories.forEach(cat => {
-          row.push(categoryCounts[cat] || 0);
-        });
-        
-        excelData.push(row);
-      });
-      
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet(excelData);
-      XLSX.utils.book_append_sheet(wb, ws, "Todas las ventas");
-      return wb;
-    }
     
-    // *** FUNCIÓN RESTAURADA ***
     function exportToExcel() {
       const storeData = salesData[currentStore];
       if (!storeData || storeData.sales.length === 0) {
@@ -2188,13 +2087,11 @@
 
     async function updateAdminAnalyticsView() {
         const selectedStore = adminAnalyticsStoreFilter.value;
-        const today = getBusinessDate();
-        const startDate = new Date(toYYYYMMDD(today));
-        const endDate = new Date(toYYYYMMDD(today));
-
+        const todayStr = toYYYYMMDD(getCurrentCostaRicaDate());
+        
         adminAnalyticsContent.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando analytics...</div>';
         
-        const sales = await getSalesFromFirebase(selectedStore, startDate, endDate);
+        const sales = await getSalesFromFirebase(selectedStore, todayStr, todayStr);
 
         const stats = {
             todaySales: sales.length,
@@ -2294,8 +2191,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       activeSessions = JSON.parse(localStorage.getItem('activeSessions') || '{}');
       
-      const today = getBusinessDate();
-      const todayStr = toYYYYMMDD(today);
+      const todayStr = toYYYYMMDD(getCurrentCostaRicaDate());
       startDateInput.value = todayStr;
       endDateInput.value = todayStr;
       adminStartDate.value = todayStr;
@@ -2366,7 +2262,7 @@
       closeSalesModal.addEventListener('click', () => salesModal.classList.remove('show'));
       applyFilterBtn.addEventListener('click', loadSales);
       clearFilterBtn.addEventListener('click', () => {
-        const todayStr = toYYYYMMDD(getBusinessDate());
+        const todayStr = toYYYYMMDD(getCurrentCostaRicaDate());
         startDateInput.value = todayStr;
         endDateInput.value = todayStr;
         storeFilter.value = 'all';
@@ -2383,7 +2279,7 @@
       closeAdminModal.addEventListener('click', () => adminModal.classList.remove('show'));
       adminApplyFilter.addEventListener('click', loadAdminData);
       adminClearFilter.addEventListener('click', () => {
-        const todayStr = toYYYYMMDD(getBusinessDate());
+        const todayStr = toYYYYMMDD(getCurrentCostaRicaDate());
         adminStartDate.value = todayStr;
         adminEndDate.value = todayStr;
         adminStoreFilter.value = 'all';
