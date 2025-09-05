@@ -318,7 +318,7 @@
     </form>
     
     <div class="mt-8 text-center text-sm text-gray-600">
-      <p>Sistema de gestión de ventas v3.6</p>
+      <p>Sistema de gestión de ventas v3.7</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios - Todos los derechos reservados</p>
     </div>
   </div>
@@ -470,7 +470,7 @@
     
     <!-- Footer -->
     <footer class="mt-8 py-6 text-center text-gray-600 text-sm">
-      <p>Sistema de Gestión de Ventas v3.6</p>
+      <p>Sistema de Gestión de Ventas v3.7</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios. Todos los derechos reservados.</p>
     </footer>
   </div>
@@ -1069,9 +1069,9 @@
     // --- LÓGICA DE FECHA Y HORA (COSTA RICA UTC-6) ---
     function getCurrentCostaRicaDate() {
         const now = new Date();
-        // Restar 6 horas a la hora UTC para obtener la hora de Costa Rica
-        now.setHours(now.getUTCHours() - 6);
-        return now;
+        const offset = -6 * 60; // Offset de Costa Rica en minutos
+        const localNow = new Date(now.getTime() + (offset + now.getTimezoneOffset()) * 60000);
+        return localNow;
     }
 
     function toYYYYMMDD(date) {
@@ -1084,11 +1084,10 @@
 
     function formatDateForCostaRica(dateString) {
         const date = new Date(dateString);
-        // Opciones para formatear la fecha a la zona horaria de Costa Rica (America/Costa_Rica)
         const options = {
-            year: 'numeric', month: 'numeric', day: 'numeric',
+            year: 'numeric', month: '2-digit', day: '2-digit',
             hour: '2-digit', minute: '2-digit',
-            hour12: false, // Usar formato de 24 horas
+            hour12: false,
             timeZone: 'America/Costa_Rica'
         };
         return new Intl.DateTimeFormat('es-CR', options).format(date);
@@ -1130,8 +1129,6 @@
     }
 
     async function getSalesFromFirebase(store, startDate, endDate) {
-        // Las fechas de entrada son del tipo 'YYYY-MM-DD'.
-        // Se interpretan como inicio y fin del día en Costa Rica.
         const startUTC = new Date(`${startDate}T00:00:00.000-06:00`);
         const endUTC = new Date(`${endDate}T23:59:59.999-06:00`);
 
@@ -1140,7 +1137,6 @@
             if (store && store !== 'all') {
                 query = query.where('store', '==', store);
             }
-            // Realizamos la consulta con el rango de fechas convertido a UTC.
             query = query.where('timestamp', '>=', startUTC.toISOString())
                          .where('timestamp', '<=', endUTC.toISOString());
             
@@ -1185,8 +1181,9 @@
 
         const todaySalesData = storeData.sales.filter(sale => {
             const saleDateCR = new Date(sale.timestamp);
-            saleDateCR.setHours(saleDateCR.getUTCHours() - 6);
-            return toYYYYMMDD(saleDateCR) === todayStr;
+            const offset = -6 * 60;
+            const localDate = new Date(saleDateCR.getTime() + (offset + saleDateCR.getTimezoneOffset()) * 60000);
+            return toYYYYMMDD(localDate) === todayStr;
         });
 
         const stats = {
@@ -1946,44 +1943,33 @@
       });
     }
     
-    function generateWorkbookForStore(storeName, sales) {
-      const categories = [
-        'Articulos', 'Articulos (P)', 'Bisuteria', 'Bisuteria (P)', 
-        'Zapato', 'Zapato (P)', 'Prenda', 'Prenda (P)', 'B.Eco',
-        'Articulos (v)', 'Articulos (P) (v)', 'Bisuteria (v)', 'Bisuteria (P) (v)', 
-        'Zapato (v)', 'Zapato (P) (v)', 'Prenda (v)', 'Prenda (P) (v)', 'B.Eco (v)'
-      ];
-      
+    // --- LÓGICA DE EXPORTACIÓN (ACTUALIZADA) ---
+    function generateWorkbook(sales) {
       const excelData = [];
-      
-      const headers = ['Fecha', 'Hora', 'Ubicación', 'Método de Pago', ...categories];
+      const headers = ['Fecha', 'Hora', 'Tienda', 'Método de Pago', 'Categoría', 'Cantidad'];
       excelData.push(headers);
       
       sales.forEach(sale => {
         const formattedCR = formatDateForCostaRica(sale.timestamp);
         const [date, time] = formattedCR.split(',');
-        
-        const row = [date, sale.manualTime || time, sale.store, sale.payment];
-        
-        const categoryCounts = {};
-        categories.forEach(cat => categoryCounts[cat] = 0);
-        
+        const finalTime = sale.manualTime || time.trim();
+
         sale.items.forEach(item => {
-          if (categoryCounts.hasOwnProperty(item.category)) {
-            categoryCounts[item.category] += item.quantity;
-          }
+          const row = [
+            date,
+            finalTime,
+            sale.store,
+            sale.payment,
+            item.category,
+            item.quantity
+          ];
+          excelData.push(row);
         });
-        
-        categories.forEach(cat => {
-          row.push(categoryCounts[cat] || 0);
-        });
-        
-        excelData.push(row);
       });
       
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet(excelData);
-      XLSX.utils.book_append_sheet(wb, ws, storeName);
+      XLSX.utils.book_append_sheet(wb, ws, "Ventas");
       return wb;
     }
     
@@ -1999,7 +1985,16 @@
           return null;
         }
         
-        return generateWorkbookForStore(storeName, sales);
+        const wb = generateWorkbook(sales);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        XLSX.utils.book_append_sheet(wb, ws, storeName);
+        // Remove the default sheet
+        if(wb.SheetNames.length > 1) {
+            delete wb.Sheets[wb.SheetNames[0]];
+            wb.SheetNames.shift();
+        }
+        return wb;
+
       } catch (error) {
         showToast(`Error al exportar ${storeName}: ${error.message}`, 'error');
         return null;
@@ -2058,7 +2053,7 @@
           return;
         }
         
-        const wb = generateWorkbookForStore("Todas las ventas", allSales);
+        const wb = generateWorkbook(allSales);
         XLSX.writeFile(wb, `Todas_las_ventas.xlsx`);
         showToast('Exportación completa en un solo archivo', 'success');
       } catch (error) {
@@ -2075,7 +2070,7 @@
         return;
       }
       
-      const wb = generateWorkbookForStore(currentStore, storeData.sales);
+      const wb = generateWorkbook(storeData.sales);
       XLSX.writeFile(wb, `Ventas_${currentStore}.xlsx`);
       showToast('Exportación completada', 'success');
     }
