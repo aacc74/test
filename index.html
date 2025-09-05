@@ -318,7 +318,7 @@
     </form>
     
     <div class="mt-8 text-center text-sm text-gray-600">
-      <p>Sistema de gestión de ventas v3.2</p>
+      <p>Sistema de gestión de ventas v3.3</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios - Todos los derechos reservados</p>
     </div>
   </div>
@@ -470,7 +470,7 @@
     
     <!-- Footer -->
     <footer class="mt-8 py-6 text-center text-gray-600 text-sm">
-      <p>Sistema de Gestión de Ventas v3.2</p>
+      <p>Sistema de Gestión de Ventas v3.3</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios. Todos los derechos reservados.</p>
     </footer>
   </div>
@@ -712,6 +712,20 @@
                     <i class="fas fa-tasks mr-2"></i> Inspeccionar Artículos
                 </button>
             </div>
+        </div>
+
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold mb-4 flex items-center">
+                <i class="fas fa-database mr-2 text-orange-500"></i> Mantenimiento de Datos
+            </h3>
+            <div class="flex flex-wrap gap-2">
+                <button id="migrate-data-btn" class="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 flex items-center">
+                    <i class="fas fa-cogs mr-2"></i> Migrar Datos Antiguos
+                </button>
+            </div>
+            <p class="text-sm text-gray-600 mt-2">
+                Use este botón una única vez para actualizar los registros de ventas antiguos y hacerlos compatibles con los nuevos filtros de fecha.
+            </p>
         </div>
 
         <div>
@@ -1056,6 +1070,7 @@
     const inspectionEndDate = document.getElementById('inspection-end-date');
     const inspectionStoreFilter = document.getElementById('inspection-store-filter');
     const inspectionApplyFilter = document.getElementById('inspection-apply-filter');
+    const migrateDataBtn = document.getElementById('migrate-data-btn');
 
     // Variables de estado
     let currentUserData = null;
@@ -1080,16 +1095,20 @@
         const date = new Date(dateObject);
         // Restamos 8 horas para alinear con el inicio del día de negocio (8 AM CR).
         // Cualquier hora entre 00:00 y 07:59 CR pertenecerá al día anterior.
-        date.setHours(date.getHours() - (BUSINESS_DAY_START_HOUR_UTC - 8)); // 8 horas de diferencia con el inicio del dia
+        date.setHours(date.getHours() - 8); 
         return date;
     }
 
     function toYYYYMMDD(date) {
-        return date.toISOString().split('T')[0];
+        const d = new Date(date);
+        const year = d.getFullYear();
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     // Funciones Toast
-    function showToast(msg, type = 'info') {
+    function showToast(msg, type = 'info', duration = 3000) {
       toastMessage.textContent = msg;
       toast.className = '';
       toast.classList.add('show');
@@ -1108,17 +1127,19 @@
           toast.style.backgroundColor = 'rgba(0,0,0,0.85)';
       }
       
-      setTimeout(() => toast.classList.remove('show'), 3000);
+      setTimeout(() => toast.classList.remove('show'), duration);
     }
 
     // Funciones Firebase
     async function backupSaleToFirebase(sale) {
       try {
         // Añadimos la fecha de negocio al objeto que se guarda en Firebase
-        const saleBusinessDate = getBusinessDate(new Date(sale.timestamp));
+        if (!sale.businessDate) {
+            const saleBusinessDate = getBusinessDate(new Date(sale.timestamp));
+            sale.businessDate = toYYYYMMDD(saleBusinessDate); // YYYY-MM-DD
+        }
         await db.collection('ventas').add({
           ...sale,
-          businessDate: toYYYYMMDD(saleBusinessDate), // YYYY-MM-DD
           backupTimestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
         console.log("Venta respaldada en Firebase con fecha de negocio");
@@ -1129,8 +1150,6 @@
     }
 
     async function getSalesFromFirebase(store, startDate, endDate) {
-        // startDate y endDate son objetos Date del calendario (input type="date")
-        // Necesitamos buscar por 'businessDate' en lugar de 'timestamp'
         const startBusinessDateStr = toYYYYMMDD(startDate);
         const endBusinessDateStr = toYYYYMMDD(endDate);
 
@@ -1141,7 +1160,6 @@
                 query = query.where('store', '==', store);
             }
             
-            // Filtramos por el campo 'businessDate'
             query = query.where('businessDate', '>=', startBusinessDateStr).where('businessDate', '<=', endBusinessDateStr);
 
             const snapshot = await query.get();
@@ -1149,11 +1167,64 @@
         } catch (error) {
             console.error("Error al obtener ventas:", error);
             if (error.code === 'failed-precondition' || error.code === 'permission-denied') {
-                showToast('Error de índice en Firebase. Asegúrese de tener un índice compuesto para [store, businessDate].', 'error');
+                showToast('Error de índice en Firebase. Por favor, ejecute la migración de datos o cree el índice manualmente.', 'error', 5000);
             } else {
                 showToast('Error al obtener ventas: ' + error.message, 'error');
             }
             return [];
+        }
+    }
+
+    // --- FUNCIÓN DE MIGRACIÓN DE DATOS ---
+    async function migrateOldSalesData() {
+        if (!isMasterUser) {
+            showToast('No tienes permiso para realizar esta acción.', 'error');
+            return;
+        }
+
+        if (!confirm('Esta acción analizará todas las ventas antiguas para actualizar su formato de fecha. Solo debe ejecutarse una vez. ¿Deseas continuar?')) {
+            return;
+        }
+
+        showToast('Iniciando migración... Esto puede tardar varios minutos.', 'info', 10000);
+        
+        try {
+            const snapshot = await db.collection('ventas').where('businessDate', '==', null).get();
+            
+            if (snapshot.empty) {
+                showToast('No se encontraron ventas antiguas para migrar. ¡Todo está actualizado!', 'success');
+                return;
+            }
+
+            let updatedCount = 0;
+            const batch = db.batch();
+
+            snapshot.docs.forEach((doc, index) => {
+                const sale = doc.data();
+                const businessDate = toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)));
+                
+                const docRef = db.collection('ventas').doc(doc.id);
+                batch.update(docRef, { businessDate: businessDate });
+                
+                updatedCount++;
+                // Firestore batch tiene un límite de 500 operaciones.
+                if ((index + 1) % 499 === 0) {
+                    batch.commit();
+                    batch = db.batch();
+                }
+            });
+
+            await batch.commit();
+
+            showToast(`¡Migración completada! Se actualizaron ${updatedCount} registros.`, 'success', 5000);
+
+        } catch (error) {
+            console.error("Error durante la migración:", error);
+            if (error.code === 'failed-precondition') {
+                 showToast('Para migrar, primero crea un índice en Firebase para el campo "businessDate" en la colección "ventas".', 'error', 10000);
+            } else {
+                 showToast('Error durante la migración: ' + error.message, 'error', 5000);
+            }
         }
     }
 
@@ -1166,11 +1237,6 @@
         
         for (const [store, storeData] of Object.entries(salesData)) {
           for (const sale of storeData.sales) {
-            // Asegurarse que las ventas viejas tengan businessDate antes de subirlas
-            if (!sale.businessDate) {
-                const saleBusinessDate = getBusinessDate(new Date(sale.timestamp));
-                sale.businessDate = toYYYYMMDD(saleBusinessDate);
-            }
             await backupSaleToFirebase(sale);
             total++;
           }
@@ -1207,7 +1273,6 @@
     }
 
     function calculateTodayStats(store) {
-        // Usamos la fecha de negocio para definir "hoy"
         const todayBusinessDateStr = toYYYYMMDD(getBusinessDate());
         initializeStoreData(store);
         const storeData = salesData[store];
@@ -1217,7 +1282,6 @@
         }
 
         const todaySalesData = storeData.sales.filter(sale => {
-            // Comparamos con la fecha de negocio de la venta
             const saleBusinessDateStr = toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)));
             return saleBusinessDateStr === todayBusinessDateStr;
         });
@@ -2299,7 +2363,6 @@
     document.addEventListener('DOMContentLoaded', () => {
       activeSessions = JSON.parse(localStorage.getItem('activeSessions') || '{}');
       
-      // Inicializar los selectores de fecha con la fecha de negocio actual
       const today = getBusinessDate();
       const todayStr = toYYYYMMDD(today);
       startDateInput.value = todayStr;
@@ -2395,6 +2458,8 @@
         adminStoreFilter.value = 'all';
         loadAdminData();
       });
+      
+      migrateDataBtn.addEventListener('click', migrateOldSalesData);
       
       adminExportAll.addEventListener('click', exportAllStores);
       adminExportAllInOne.addEventListener('click', exportAllInOneExcel);
