@@ -318,7 +318,7 @@
     </form>
     
     <div class="mt-8 text-center text-sm text-gray-600">
-      <p>Sistema de gestión de ventas v3.3</p>
+      <p>Sistema de gestión de ventas v3.4</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios - Todos los derechos reservados</p>
     </div>
   </div>
@@ -470,7 +470,7 @@
     
     <!-- Footer -->
     <footer class="mt-8 py-6 text-center text-gray-600 text-sm">
-      <p>Sistema de Gestión de Ventas v3.3</p>
+      <p>Sistema de Gestión de Ventas v3.4</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios. Todos los derechos reservados.</p>
     </footer>
   </div>
@@ -712,20 +712,6 @@
                     <i class="fas fa-tasks mr-2"></i> Inspeccionar Artículos
                 </button>
             </div>
-        </div>
-
-        <div class="mb-8">
-            <h3 class="text-lg font-semibold mb-4 flex items-center">
-                <i class="fas fa-database mr-2 text-orange-500"></i> Mantenimiento de Datos
-            </h3>
-            <div class="flex flex-wrap gap-2">
-                <button id="migrate-data-btn" class="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 flex items-center">
-                    <i class="fas fa-cogs mr-2"></i> Migrar Datos Antiguos
-                </button>
-            </div>
-            <p class="text-sm text-gray-600 mt-2">
-                Use este botón una única vez para actualizar los registros de ventas antiguos y hacerlos compatibles con los nuevos filtros de fecha.
-            </p>
         </div>
 
         <div>
@@ -1070,7 +1056,6 @@
     const inspectionEndDate = document.getElementById('inspection-end-date');
     const inspectionStoreFilter = document.getElementById('inspection-store-filter');
     const inspectionApplyFilter = document.getElementById('inspection-apply-filter');
-    const migrateDataBtn = document.getElementById('migrate-data-btn');
 
     // Variables de estado
     let currentUserData = null;
@@ -1080,21 +1065,10 @@
     let salesData = {};
     let activeSessions = {};
     let inactivityTimer;
-    
-    // Constante para el inicio del día de negocio (8 AM en Costa Rica = UTC-6)
-    const BUSINESS_DAY_START_HOUR_UTC = 14; // 8 AM GMT-6 is 14:00 UTC
 
-    // --- NUEVA FUNCIÓN PARA GESTIONAR FECHA DE NEGOCIO ---
-    /**
-     * Obtiene la fecha de negocio para una fecha dada.
-     * El día de negocio empieza a las 8 AM hora de Costa Rica.
-     * @param {Date} dateObject - El objeto Date a convertir.
-     * @returns {Date} Un nuevo objeto Date que representa el inicio del día de negocio.
-     */
+    // --- LÓGICA DE FECHA DE NEGOCIO ---
     function getBusinessDate(dateObject = new Date()) {
         const date = new Date(dateObject);
-        // Restamos 8 horas para alinear con el inicio del día de negocio (8 AM CR).
-        // Cualquier hora entre 00:00 y 07:59 CR pertenecerá al día anterior.
         date.setHours(date.getHours() - 8); 
         return date;
     }
@@ -1130,19 +1104,16 @@
       setTimeout(() => toast.classList.remove('show'), duration);
     }
 
-    // Funciones Firebase
+    // --- FUNCIONES DE FIREBASE (ACTUALIZADAS) ---
     async function backupSaleToFirebase(sale) {
       try {
-        // Añadimos la fecha de negocio al objeto que se guarda en Firebase
-        if (!sale.businessDate) {
-            const saleBusinessDate = getBusinessDate(new Date(sale.timestamp));
-            sale.businessDate = toYYYYMMDD(saleBusinessDate); // YYYY-MM-DD
-        }
-        await db.collection('ventas').add({
-          ...sale,
-          backupTimestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        console.log("Venta respaldada en Firebase con fecha de negocio");
+        const saleWithBusinessDate = {
+            ...sale,
+            businessDate: toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)))
+        };
+        const docRef = db.collection('ventas').doc(String(sale.id));
+        await docRef.set(saleWithBusinessDate);
+        console.log("Venta respaldada en Firebase con ID:", sale.id);
       } catch (error) {
         console.error("Error al respaldar venta:", error);
         showToast('Error al respaldar venta: ' + error.message, 'error');
@@ -1150,107 +1121,69 @@
     }
 
     async function getSalesFromFirebase(store, startDate, endDate) {
-        const startBusinessDateStr = toYYYYMMDD(startDate);
-        const endBusinessDateStr = toYYYYMMDD(endDate);
+        let allSales = [];
+        const saleIds = new Set();
 
+        // 1. Intenta la consulta nueva y más eficiente con 'businessDate'
         try {
+            const startBusinessDateStr = toYYYYMMDD(startDate);
+            const endBusinessDateStr = toYYYYMMDD(endDate);
             let query = db.collection('ventas');
-            
             if (store && store !== 'all') {
                 query = query.where('store', '==', store);
             }
-            
             query = query.where('businessDate', '>=', startBusinessDateStr).where('businessDate', '<=', endBusinessDateStr);
-
             const snapshot = await query.get();
-            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        } catch (error) {
-            console.error("Error al obtener ventas:", error);
-            if (error.code === 'failed-precondition' || error.code === 'permission-denied') {
-                showToast('Error de índice en Firebase. Por favor, ejecute la migración de datos o cree el índice manualmente.', 'error', 5000);
-            } else {
-                showToast('Error al obtener ventas: ' + error.message, 'error');
-            }
-            return [];
-        }
-    }
-
-    // --- FUNCIÓN DE MIGRACIÓN DE DATOS ---
-    async function migrateOldSalesData() {
-        if (!isMasterUser) {
-            showToast('No tienes permiso para realizar esta acción.', 'error');
-            return;
-        }
-
-        if (!confirm('Esta acción analizará todas las ventas antiguas para actualizar su formato de fecha. Solo debe ejecutarse una vez. ¿Deseas continuar?')) {
-            return;
-        }
-
-        showToast('Iniciando migración... Esto puede tardar varios minutos.', 'info', 10000);
-        
-        try {
-            const snapshot = await db.collection('ventas').where('businessDate', '==', null).get();
-            
-            if (snapshot.empty) {
-                showToast('No se encontraron ventas antiguas para migrar. ¡Todo está actualizado!', 'success');
-                return;
-            }
-
-            let updatedCount = 0;
-            const batch = db.batch();
-
-            snapshot.docs.forEach((doc, index) => {
-                const sale = doc.data();
-                const businessDate = toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)));
-                
-                const docRef = db.collection('ventas').doc(doc.id);
-                batch.update(docRef, { businessDate: businessDate });
-                
-                updatedCount++;
-                // Firestore batch tiene un límite de 500 operaciones.
-                if ((index + 1) % 499 === 0) {
-                    batch.commit();
-                    batch = db.batch();
+            snapshot.docs.forEach(doc => {
+                const sale = { id: doc.id, ...doc.data() };
+                if (!saleIds.has(sale.id)) {
+                    allSales.push(sale);
+                    saleIds.add(sale.id);
                 }
             });
-
-            await batch.commit();
-
-            showToast(`¡Migración completada! Se actualizaron ${updatedCount} registros.`, 'success', 5000);
-
+            console.log(`Consulta por 'businessDate' encontró ${allSales.length} ventas.`);
         } catch (error) {
-            console.error("Error durante la migración:", error);
-            if (error.code === 'failed-precondition') {
-                 showToast('Para migrar, primero crea un índice en Firebase para el campo "businessDate" en la colección "ventas".', 'error', 10000);
-            } else {
-                 showToast('Error durante la migración: ' + error.message, 'error', 5000);
+            console.warn("La consulta por 'businessDate' falló (puede ser por falta de índice). Intentando con 'timestamp'.", error);
+        }
+
+        // 2. Plan B: Consulta por 'timestamp' para datos antiguos
+        const startTimestamp = new Date(startDate);
+        startTimestamp.setHours(8, 0, 0, 0); // 8 AM del día de inicio
+        const endTimestamp = new Date(endDate);
+        endTimestamp.setHours(8, 0, 0, 0); // 8 AM del día siguiente al de fin
+        endTimestamp.setDate(endTimestamp.getDate() + 1);
+
+        try {
+            let query = db.collection('ventas');
+            if (store && store !== 'all') {
+                query = query.where('store', '==', store);
             }
+            query = query.where('timestamp', '>=', startTimestamp.toISOString()).where('timestamp', '<', endTimestamp.toISOString());
+            const snapshot = await query.get();
+            
+            const timestampSales = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            console.log(`Consulta por 'timestamp' encontró ${timestampSales.length} ventas.`);
+
+            timestampSales.forEach(sale => {
+                if (!saleIds.has(sale.id)) {
+                    // Verificamos si realmente pertenece al rango de "días de negocio"
+                    const saleBusinessDateStr = toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)));
+                    if (saleBusinessDateStr >= toYYYYMMDD(startDate) && saleBusinessDateStr <= toYYYYMMDD(endDate)) {
+                        allSales.push(sale);
+                        saleIds.add(sale.id);
+                    }
+                }
+            });
+        } catch(error) {
+            console.error("La consulta por 'timestamp' también falló.", error);
+            showToast('Error al obtener ventas. Revise los permisos de Firestore.', 'error');
         }
+        
+        console.log(`Total de ventas combinadas y únicas: ${allSales.length}`);
+        return allSales;
     }
 
-
-    async function syncAllSalesToFirebase() {
-      if (!isMasterUser) return;
-      
-      try {
-        let total = 0;
-        
-        for (const [store, storeData] of Object.entries(salesData)) {
-          for (const sale of storeData.sales) {
-            await backupSaleToFirebase(sale);
-            total++;
-          }
-        }
-        
-        showToast(`Se sincronizaron ${total} ventas a Firebase`, 'success');
-      } catch (error)
-      {
-        showToast('Error al sincronizar ventas', 'error');
-        console.error("Error:", error);
-      }
-    }
-
-    // Almacenamiento local
+    // --- ALMACENAMIENTO LOCAL ---
     function getLocalStorageData() {
       const data = localStorage.getItem('salesData');
       return data ? JSON.parse(data) : {};
@@ -1268,10 +1201,6 @@
       }
     }
     
-    function updateStoreStats(store, items, payment) {
-        saveLocalStorageData();
-    }
-
     function calculateTodayStats(store) {
         const todayBusinessDateStr = toYYYYMMDD(getBusinessDate());
         initializeStoreData(store);
@@ -1304,7 +1233,7 @@
         return stats;
     }
 
-    // Sesión
+    // --- GESTIÓN DE SESIÓN ---
     function saveSession(user, store) {
       localStorage.setItem('currentUser', user);
       localStorage.setItem('currentStore', store);
@@ -1440,7 +1369,7 @@
       }
     }
 
-    // Funciones de ventas
+    // --- GESTIÓN DE VENTAS ---
     function addSaleItem() {
       const category = categorySelect.value;
       const quantity = parseInt(quantityInput.value) || 1;
@@ -1513,8 +1442,7 @@
       try {
         initializeStoreData(currentStore);
         salesData[currentStore].sales.push(sale);
-        
-        updateStoreStats(currentStore, sale.items, sale.payment);
+        saveLocalStorageData(); // Guardado explícito en LocalStorage
         
         await backupSaleToFirebase(sale);
         
@@ -1840,6 +1768,7 @@
       salesList.appendChild(saleElement);
     }
     
+    // --- FUNCIONES DE ADMINISTRACIÓN ---
     async function loadAdminData() {
         await loadAdminSales();
     }
@@ -2238,18 +2167,6 @@
       return wb;
     }
     
-    function exportToExcel() {
-      const storeData = salesData[currentStore];
-      if (!storeData || storeData.sales.length === 0) {
-        showToast('No hay ventas para exportar', 'error');
-        return;
-      }
-      
-      const wb = generateWorkbookForStore(currentStore, storeData.sales);
-      XLSX.writeFile(wb, `${currentStore}_ventas.xlsx`);
-      showToast('Exportación completada', 'success');
-    }
-
     async function showAdminAnalytics() {
         adminAnalyticsModal.classList.add('show');
         await updateAdminAnalyticsView();
@@ -2359,7 +2276,7 @@
             </div>`;
     }
     
-    // Inicializar
+    // --- INICIALIZACIÓN ---
     document.addEventListener('DOMContentLoaded', () => {
       activeSessions = JSON.parse(localStorage.getItem('activeSessions') || '{}');
       
@@ -2441,7 +2358,7 @@
         storeFilter.value = 'all';
         loadSales();
       });
-      syncFirebaseBtn.addEventListener('click', syncAllSalesToFirebase);
+      syncFirebaseBtn.addEventListener('click', () => { /* Esta función podría ser útil para sincronizar local->remoto */ });
       
       adminPanelBtn.addEventListener('click', () => {
         adminModal.classList.add('show');
@@ -2458,8 +2375,6 @@
         adminStoreFilter.value = 'all';
         loadAdminData();
       });
-      
-      migrateDataBtn.addEventListener('click', migrateOldSalesData);
       
       adminExportAll.addEventListener('click', exportAllStores);
       adminExportAllInOne.addEventListener('click', exportAllInOneExcel);
