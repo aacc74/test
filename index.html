@@ -318,7 +318,7 @@
     </form>
     
     <div class="mt-8 text-center text-sm text-gray-600">
-      <p>Sistema de gestión de ventas v3.7</p>
+      <p>Sistema de gestión de ventas v3.8</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios - Todos los derechos reservados</p>
     </div>
   </div>
@@ -470,7 +470,7 @@
     
     <!-- Footer -->
     <footer class="mt-8 py-6 text-center text-gray-600 text-sm">
-      <p>Sistema de Gestión de Ventas v3.7</p>
+      <p>Sistema de Gestión de Ventas v3.8</p>
       <p class="mt-1">© 2023 Tiendas de Accesorios. Todos los derechos reservados.</p>
     </footer>
   </div>
@@ -1943,10 +1943,18 @@
       });
     }
     
-    // --- LÓGICA DE EXPORTACIÓN (ACTUALIZADA) ---
+    // --- LÓGICA DE EXPORTACIÓN (CORREGIDA) ---
     function generateWorkbook(sales) {
+      const categories = [
+        'Articulos', 'Articulos (P)', 'Bisuteria', 'Bisuteria (P)', 
+        'Zapato', 'Zapato (P)', 'Prenda', 'Prenda (P)',
+        'Articulos (v)', 'Articulos (P) (v)', 'Bisuteria (v)', 'Bisuteria (P) (v)', 
+        'Zapato (v)', 'Zapato (P) (v)', 'Prenda (v)', 'Prenda (P) (v)', 'B.Eco (v)',
+        'B.Eco'
+      ];
+      
       const excelData = [];
-      const headers = ['Fecha', 'Hora', 'Tienda', 'Método de Pago', 'Categoría', 'Cantidad'];
+      const headers = ['Fecha', 'Hora', 'Tienda', 'Método de Pago', ...categories];
       excelData.push(headers);
       
       sales.forEach(sale => {
@@ -1954,17 +1962,26 @@
         const [date, time] = formattedCR.split(',');
         const finalTime = sale.manualTime || time.trim();
 
+        const rowData = {
+            'Fecha': date,
+            'Hora': finalTime,
+            'Tienda': sale.store,
+            'Método de Pago': sale.payment
+        };
+
+        // Initialize all categories to 0 for this row
+        categories.forEach(cat => rowData[cat] = 0);
+
+        // Sum quantities for each category in the sale
         sale.items.forEach(item => {
-          const row = [
-            date,
-            finalTime,
-            sale.store,
-            sale.payment,
-            item.category,
-            item.quantity
-          ];
-          excelData.push(row);
+            if (rowData.hasOwnProperty(item.category)) {
+                rowData[item.category] += item.quantity;
+            }
         });
+
+        // Create the row array in the correct order
+        const row = headers.map(header => rowData[header]);
+        excelData.push(row);
       });
       
       const wb = XLSX.utils.book_new();
