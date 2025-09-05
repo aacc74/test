@@ -1,0 +1,2474 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestor de Ventas - Tiendas de Accesorios</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore-compat.js"></script>
+  
+  <style>
+    body {
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+    }
+    
+    #toast {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      background: rgba(0,0,0,0.85);
+      color: white;
+      padding: 1rem 2rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+      opacity: 0;
+      transition: opacity 0.3s ease-in-out;
+      pointer-events: none;
+      z-index: 1000;
+      max-width: 350px;
+      display: flex;
+      align-items: center;
+    }
+    
+    #toast.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    .toast-success {
+      background: rgba(16, 185, 129, 0.9) !important;
+    }
+    
+    .toast-error {
+      background: rgba(239, 68, 68, 0.9) !important;
+    }
+    
+    .toast-warning {
+      background: rgba(245, 158, 11, 0.9) !important;
+    }
+    
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    
+    .modal.show {
+      opacity: 1;
+      pointer-events: all;
+    }
+    
+    .modal-content {
+      background: white;
+      border-radius: 0.75rem;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+      transform: translateY(20px);
+      transition: transform 0.3s;
+      max-height: 90vh;
+      overflow: hidden;
+      width: 90%;
+      max-width: 800px;
+    }
+    
+    .modal.show .modal-content {
+      transform: translateY(0);
+    }
+    
+    .sale-item {
+      animation: fadeIn 0.3s ease-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .online-status {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 5px;
+    }
+    
+    .online {
+      background-color: #10B981;
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+    }
+    
+    .offline {
+      background-color: #EF4444;
+    }
+    
+    .payment-badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    
+    .payment-movil {
+      background-color: #dbeafe;
+      color: #3b82f6;
+    }
+    
+    .payment-enlinea {
+      background-color: #ede9fe;
+      color: #8b5cf6;
+    }
+    
+    .payment-tarjeta {
+      background-color: #f0fdf4;
+      color: #10b981;
+    }
+    
+    .payment-efectivo {
+      background-color: #fffbeb;
+      color: #f59e0b;
+    }
+    
+    .payment-dividido {
+      background-color: #fce7f3;
+      color: #ec4899;
+    }
+    
+    .stats-card {
+      background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+      border-radius: 0.75rem;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+      transition: all 0.3s ease;
+    }
+    
+    .stats-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+    }
+    
+    .progress-bar {
+      height: 6px;
+      border-radius: 3px;
+      background-color: #e5e7eb;
+      overflow: hidden;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+    
+    .user-location {
+      display: inline-block;
+      background-color: #e0f2fe;
+      color: #0c4a6e;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      margin-right: 0.5rem;
+      margin-bottom: 0.25rem;
+    }
+    
+    .edit-item-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .disconnect-user {
+      transition: all 0.2s;
+    }
+    .disconnect-user:hover {
+      transform: scale(1.05);
+      background-color: #ef4444 !important;
+    }
+    
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+    }
+    
+    @media (max-width: 768px) {
+      .analytics-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .export-btn {
+      background: linear-gradient(to right, #10b981, #3b82f6);
+      color: white;
+      padding: 0.5rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.3s ease;
+    }
+    
+    .export-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .exporting-spinner {
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    
+    .index-error {
+      background: #fffbeb;
+      border: 1px solid #f59e0b;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      margin: 1rem 0;
+    }
+    
+    .index-error a {
+      color: #3b82f6;
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <!-- Toast Notifications -->
+  <div id="toast">
+    <i class="fas fa-info-circle mr-2"></i>
+    <span id="toast-message">Mensaje de notificación</span>
+  </div>
+
+  <!-- Login Screen -->
+  <div id="login-screen" class="flex flex-col items-center justify-center min-h-screen p-4">
+    <div class="text-center mb-10">
+      <div class="flex justify-center mb-4">
+        <div class="bg-blue-100 p-4 rounded-full">
+          <i class="fas fa-store text-blue-600 text-4xl"></i>
+        </div>
+      </div>
+      <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Sistema de Gestión de Ventas</h1>
+      <p class="text-gray-600 mt-2">Control de ventas para tiendas de accesorios</p>
+    </div>
+    
+    <form id="login-form" class="bg-white p-6 rounded-xl shadow-lg w-full max-w-md space-y-4">
+      <h2 class="text-2xl font-bold text-center text-gray-800">Iniciar Sesión</h2>
+      
+      <div class="space-y-2">
+        <label class="block text-sm font-medium text-gray-700">Usuario (Correo)</label>
+        <div class="relative">
+          <i class="fas fa-envelope absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+          <input type="email" id="username" placeholder="Ingrese su correo" required 
+                 class="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        </div>
+      </div>
+      
+      <div class="space-y-2">
+        <label class="block text-sm font-medium text-gray-700">Contraseńa</label>
+        <div class="relative">
+          <i class="fas fa-lock absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+          <input type="password" id="password" placeholder="Ingrese su contraseńa" required 
+                 class="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        </div>
+      </div>
+      
+      <div class="mb-2">
+        <label class="block font-medium text-gray-700 mb-3">Seleccione tienda:</label>
+        <select id="selected-store" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          <option value="" disabled selected>Seleccione una tienda</option>
+          <option value="506">506</option>
+          <option value="centro">Centro</option>
+          <option value="pavas">Pavas</option>
+          <option value="terramall">Terramall</option>
+          <option value="escazu">Escazú</option>
+          <option value="hot">Hot</option>
+          <option value="desamparados">Desamparados</option>
+          <option value="canonazo">Cańonazo</option>
+          <option value="sabanilla">Sabanilla</option>
+        </select>
+      </div>
+      
+      <p id="error-message" class="text-red-500 text-sm hidden py-2 text-center"></p>
+      
+      <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition">
+        <i class="fas fa-sign-in-alt mr-2"></i>Entrar al sistema
+      </button>
+    </form>
+    
+    <div class="mt-8 text-center text-sm text-gray-600">
+      <p>Sistema de gestión de ventas v3.2</p>
+      <p class="mt-1">© 2023 Tiendas de Accesorios - Todos los derechos reservados</p>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div id="main-content" class="flex-1 p-4 max-w-7xl mx-auto w-full hidden">
+    <!-- Header -->
+    <header class="bg-white rounded-xl shadow p-4 mb-6">
+      <div class="flex flex-col md:flex-row md:items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold text-gray-800 flex items-center">
+            <i class="fas fa-store mr-3 text-blue-500"></i> 
+            Gestión de Ventas
+            <span id="current-store-badge" class="ml-3 bg-blue-100 text-blue-800 text-sm px-3 py-1 rounded-full"></span>
+          </h1>
+          <div id="user-locations" class="text-sm text-gray-600 mt-1 flex flex-wrap items-center">
+            <i class="fas fa-map-marker-alt mr-2"></i>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-3 mt-4 md:mt-0">
+          <div class="hidden md:block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+            <i class="fas fa-user mr-1"></i>
+            <span id="current-user">admin</span>
+          </div>
+          
+          <button id="analytics-btn" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center">
+            <i class="fas fa-chart-line mr-2"></i>Analytics
+          </button>
+          
+          <button id="admin-panel-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center">
+            <i class="fas fa-cog mr-2"></i>Panel Admin
+          </button>
+          
+          <button id="logout-btn" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 flex items-center">
+            <i class="fas fa-sign-out-alt mr-2"></i>Salir
+          </button>
+        </div>
+      </div>
+    </header>
+    
+    <!-- Form Section -->
+    <div class="bg-white rounded-xl shadow p-6 mb-6">
+      <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+        <i class="fas fa-plus-circle mr-2 text-blue-500"></i> Registrar Nueva Venta
+      </h2>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div>
+          <label class="block font-semibold text-gray-700 mb-2">Categoría de Artículo</label>
+          <select id="selected-category" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="Articulos">Artículos</option>
+            <option value="Articulos (P)">Artículos (P)</option>
+            <option value="Bisuteria">Bisutería</option>
+            <option value="Bisuteria (P)">Bisutería (P)</option>
+            <option value="Zapato">Zapato</option>
+            <option value="Zapato (P)">Zapato (P)</option>
+            <option value="Prenda">Prenda</option>
+            <option value="Prenda (P)">Prenda (P)</option>
+            <option value="B.Eco">B.Eco</option>
+            <option value="Articulos (v)">Artículos (v)</option>
+            <option value="Articulos (P) (v)">Artículos (P) (v)</option>
+            <option value="Bisuteria (v)">Bisutería (v)</option>
+            <option value="Bisuteria (P) (v)">Bisutería (P) (v)</option>
+            <option value="Zapato (v)">Zapato (v)</option>
+            <option value="Zapato (P) (v)">Zapato (P) (v)</option>
+            <option value="Prenda (v)">Prenda (v)</option>
+            <option value="Prenda (P) (v)">Prenda (P) (v)</option>
+            <option value="B.Eco (v)">B.Eco (v)</option>
+          </select>
+        </div>
+        
+        <div>
+          <label class="block font-semibold text-gray-700 mb-2">Cantidad</label>
+          <div class="flex">
+            <button id="decrease-qty" class="bg-gray-200 px-4 py-2 rounded-l-lg hover:bg-gray-300">
+              <i class="fas fa-minus"></i>
+            </button>
+            <input type="number" id="item-quantity" min="1" value="1" 
+                   class="w-full p-2 border-y border-gray-300 text-center focus:outline-none">
+            <button id="increase-qty" class="bg-gray-200 px-4 py-2 rounded-r-lg hover:bg-gray-300">
+              <i class="fas fa-plus"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <button id="add-category" class="mb-6 bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 flex items-center">
+        <i class="fas fa-cart-plus mr-2"></i> Agregar categoría a venta
+      </button>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div>
+          <label class="block font-semibold text-gray-700 mb-2">Método de pago</label>
+          <select id="selected-payment" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="" disabled selected>Seleccione método</option>
+            <option value="S.Movil">S.Móvil</option>
+            <option value="S.Enlinea">S.Enlínea</option>
+            <option value="Tarjeta">Tarjeta</option>
+            <option value="Efectivo">Efectivo</option>
+            <option value="Cobro dividido">Cobro dividido</option>
+          </select>
+        </div>
+        
+        <div>
+          <label class="block font-semibold text-gray-700 mb-2">Hora manual (opcional)</label>
+          <input type="time" id="manual-time" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        </div>
+      </div>
+      
+      <!-- Current Sale Items -->
+      <div class="mb-6">
+        <h3 class="text-lg font-semibold text-gray-700 mb-3 flex items-center">
+          <i class="fas fa-receipt mr-2 text-blue-500"></i> Artículos en la venta actual
+        </h3>
+        
+        <div id="current-sale-items" class="border border-gray-200 rounded-lg divide-y">
+          <!-- Los artículos se mostrarán aquí -->
+        </div>
+      </div>
+      
+      <!-- Action Buttons -->
+      <div class="flex flex-wrap gap-3">
+        <button id="save-sale" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center">
+          <i class="fas fa-save mr-2"></i> Guardar venta
+        </button>
+        <button id="export-excel" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center">
+          <i class="fas fa-file-excel mr-2"></i> Exportar a Excel
+        </button>
+        <button id="clear-all" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex items-center">
+          <i class="fas fa-trash mr-2"></i> Limpiar todo
+        </button>
+        <button id="view-sales" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center">
+          <i class="fas fa-eye mr-2"></i> Ver ventas
+        </button>
+      </div>
+    </div>
+    
+    <!-- Recent Sales -->
+    <div class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+        <i class="fas fa-history mr-2 text-blue-500"></i> Última Venta
+      </h2>
+      
+      <div id="last-sale-container" class="border border-gray-200 rounded-lg p-4">
+        <!-- La última venta se mostrará aquí -->
+      </div>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="mt-8 py-6 text-center text-gray-600 text-sm">
+      <p>Sistema de Gestión de Ventas v3.2</p>
+      <p class="mt-1">© 2023 Tiendas de Accesorios. Todos los derechos reservados.</p>
+    </footer>
+  </div>
+
+  <!-- MODAL ANALYTICS -->
+  <div id="analytics-modal" class="modal">
+    <div class="modal-content">
+      <div class="p-4 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
+        <h2 class="text-xl font-bold flex items-center">
+          <i class="fas fa-chart-line mr-2 text-purple-500"></i> Estadísticas Detalladas
+        </h2>
+        <button id="close-analytics-modal" class="bg-gray-500 text-white px-3 py-1 rounded-lg hover:bg-gray-600 flex items-center">
+          <i class="fas fa-times mr-1"></i> Cerrar
+        </button>
+      </div>
+      
+      <div class="p-6 overflow-y-auto max-h-[80vh]">
+        <div class="analytics-grid">
+          <div class="stats-card p-5">
+            <div class="flex justify-between items-center">
+              <div>
+                <h3 class="text-lg font-semibold text-gray-700">Ventas Hoy</h3>
+                <p id="analytics-today-sales" class="text-2xl font-bold mt-1">0</p>
+              </div>
+              <div class="bg-blue-100 p-3 rounded-full">
+                <i class="fas fa-shopping-bag text-blue-600 text-xl"></i>
+              </div>
+            </div>
+            <div class="mt-4">
+              <div class="flex justify-between text-sm text-gray-600 mb-1">
+                <span>Meta: 25 ventas</span>
+                <span id="analytics-sales-goal-percent">0%</span>
+              </div>
+              <div class="progress-bar">
+                <div id="analytics-sales-progress" class="progress-fill bg-blue-500" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="stats-card p-5">
+            <div class="flex justify-between items-center">
+              <div>
+                <h3 class="text-lg font-semibold text-gray-700">Artículos Vendidos</h3>
+                <p id="analytics-today-items" class="text-2xl font-bold mt-1">0</p>
+              </div>
+              <div class="bg-green-100 p-3 rounded-full">
+                <i class="fas fa-tags text-green-600 text-xl"></i>
+              </div>
+            </div>
+            <div class="mt-4">
+              <div class="flex justify-between text-sm text-gray-600 mb-1">
+                <span>Promedio por venta: <span id="analytics-avg-per-sale">0</span></span>
+                <span id="analytics-items-change">+0%</span>
+              </div>
+              <div class="progress-bar">
+                <div id="analytics-items-progress" class="progress-fill bg-green-500" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="stats-card p-5">
+            <div class="flex justify-between items-center">
+              <div>
+                <h3 class="text-lg font-semibold text-gray-700">Métodos de Pago</h3>
+                <p id="analytics-payment-methods" class="text-2xl font-bold mt-1">0</p>
+              </div>
+              <div class="bg-purple-100 p-3 rounded-full">
+                <i class="fas fa-credit-card text-purple-600 text-xl"></i>
+              </div>
+            </div>
+            <div class="mt-4">
+              <div class="flex justify-between text-sm text-gray-600 mb-1">
+                <span>Principal: <span id="analytics-main-payment">-</span></span>
+                <span id="analytics-main-payment-percent">0%</span>
+              </div>
+              <div class="progress-bar">
+                <div id="analytics-payment-progress" class="progress-fill bg-purple-500" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="mt-6 bg-white p-5 rounded-xl shadow">
+          <h3 class="text-lg font-semibold mb-4 flex items-center">
+            <i class="fas fa-list mr-2 text-blue-500"></i> Detalle de Métodos de Pago
+          </h3>
+          <div id="payment-methods-details" class="space-y-2">
+            <!-- Los métodos de pago se mostrarán aquí -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL VENTAS GUARDADAS -->
+  <div id="sales-modal" class="modal">
+    <div class="modal-content">
+      <div class="p-4 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
+        <h2 class="text-xl font-bold flex items-center">
+          <i class="fas fa-receipt mr-2 text-blue-500"></i> Ventas guardadas
+        </h2>
+        <button id="close-sales-modal" class="bg-gray-500 text-white px-3 py-1 rounded-lg hover:bg-gray-600 flex items-center">
+          <i class="fas fa-times mr-1"></i> Cerrar
+        </button>
+      </div>
+      
+      <div class="p-4 border-b sticky top-16 bg-white z-10 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="flex gap-2 items-center">
+          <label class="font-semibold whitespace-nowrap">Desde:</label>
+          <input type="date" id="start-date" class="p-2 border border-gray-300 rounded-lg w-full" />
+        </div>
+        <div class="flex gap-2 items-center">
+          <label class="font-semibold whitespace-nowrap">Hasta:</label>
+          <input type="date" id="end-date" class="p-2 border border-gray-300 rounded-lg w-full" />
+        </div>
+        <div class="flex gap-2 items-center" id="store-filter-container">
+          <label class="font-semibold whitespace-nowrap">Tienda:</label>
+          <select id="store-filter" class="p-2 border border-gray-300 rounded-lg w-full">
+            <option value="all">Todas</option>
+            <option value="506">506</option>
+            <option value="centro">Centro</option>
+            <option value="pavas">Pavas</option>
+            <option value="terramall">Terramall</option>
+            <option value="escazu">Escazú</option>
+            <option value="hot">Hot</option>
+            <option value="desamparados">Desamparados</option>
+            <option value="canonazo">Cańonazo</option>
+            <option value="sabanilla">Sabanilla</option>
+          </select>
+        </div>
+        <div class="flex gap-2 items-center col-span-1 md:col-span-3">
+          <button id="apply-filter" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center">
+            <i class="fas fa-filter mr-2"></i> Filtrar
+          </button>
+          <button id="clear-filter" class="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 flex items-center">
+            <i class="fas fa-undo mr-2"></i> Limpiar
+          </button>
+          <button id="sync-firebase-btn" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center">
+            <i class="fas fa-sync-alt mr-2"></i> Sincronizar
+          </button>
+        </div>
+      </div>
+      
+      <div class="overflow-auto p-4 max-h-[60vh]">
+        <div id="sales-list" class="space-y-3">
+          <!-- Ventas se mostrarán aquí -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL EDITAR VENTA -->
+  <div id="edit-sale-modal" class="modal">
+    <div class="modal-content">
+      <div class="p-4 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
+        <h2 class="text-xl font-bold flex items-center">
+          <i class="fas fa-edit mr-2 text-blue-500"></i> Editar Venta
+        </h2>
+        <button id="close-edit-modal" class="bg-gray-500 text-white px-3 py-1 rounded-lg hover:bg-gray-600 flex items-center">
+          <i class="fas fa-times mr-1"></i> Cerrar
+        </button>
+      </div>
+      
+      <div class="p-4 overflow-y-auto max-h-[80vh]">
+        <input type="hidden" id="edit-sale-id">
+        <input type="hidden" id="edit-sale-store">
+        
+        <div class="mb-4">
+          <h3 class="text-lg font-semibold mb-2">Artículos:</h3>
+          <div id="edit-items-container" class="space-y-2">
+            <!-- Los artículos editables se mostrarán aquí -->
+          </div>
+          <button id="add-edit-item" class="mt-3 bg-blue-100 text-blue-600 px-3 py-1 rounded-lg hover:bg-blue-200 flex items-center">
+            <i class="fas fa-plus mr-1"></i> Agregar artículo
+          </button>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block font-semibold text-gray-700 mb-2">Método de pago</label>
+            <select id="edit-payment" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <option value="S.Movil">S.Móvil</option>
+              <option value="S.Enlinea">S.Enlínea</option>
+              <option value="Tarjeta">Tarjeta</option>
+              <option value="Efectivo">Efectivo</option>
+              <option value="Cobro dividido">Cobro dividido</option>
+            </select>
+          </div>
+          
+          <div>
+            <label class="block font-semibold text-gray-700 mb-2">Hora manual (opcional)</label>
+            <input type="time" id="edit-manual-time" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          </div>
+        </div>
+        
+        <div class="flex justify-end gap-2 mt-4">
+          <button id="delete-sale" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex items-center">
+            <i class="fas fa-trash mr-2"></i> Eliminar
+          </button>
+          <button id="save-edit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center">
+            <i class="fas fa-save mr-2"></i> Guardar cambios
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL ADMINISTRACIÓN -->
+  <div id="admin-modal" class="modal">
+    <div class="modal-content">
+      <div class="p-4 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
+        <h2 class="text-xl font-bold flex items-center">
+          <i class="fas fa-cog mr-2 text-indigo-500"></i> Panel de Administración
+        </h2>
+        <button id="close-admin-modal" class="bg-gray-500 text-white px-3 py-1 rounded-lg hover:bg-gray-600 flex items-center">
+          <i class="fas fa-times mr-1"></i> Cerrar
+        </button>
+      </div>
+      
+      <div class="overflow-auto p-4 max-h-[80vh]">
+        <div class="mb-8">
+          <h3 class="text-lg font-semibold mb-4 flex items-center">
+            <i class="fas fa-users mr-2 text-green-500"></i> Usuarios Conectados
+          </h3>
+          <div id="users-online-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Usuarios se mostrarán aquí -->
+          </div>
+        </div>
+        
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold mb-4 flex items-center">
+                <i class="fas fa-chart-line mr-2 text-purple-500"></i> Analytics y Reportes
+            </h3>
+            <div class="flex flex-wrap gap-2">
+                <button id="admin-analytics-btn" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center">
+                    <i class="fas fa-eye mr-2"></i> Ver Analytics por Tienda
+                </button>
+                <button id="admin-items-inspection-btn" class="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 flex items-center">
+                    <i class="fas fa-tasks mr-2"></i> Inspeccionar Artículos
+                </button>
+            </div>
+        </div>
+
+        <div>
+          <h3 class="text-lg font-semibold mb-4 flex items-center">
+            <i class="fas fa-chart-bar mr-2 text-purple-500"></i> Reporte de Ventas por Tienda
+          </h3>
+          <div class="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="flex gap-2 items-center">
+              <label class="font-semibold whitespace-nowrap">Desde:</label>
+              <input type="date" id="admin-start-date" class="p-2 border border-gray-300 rounded-lg w-full" />
+            </div>
+            <div class="flex gap-2 items-center">
+              <label class="font-semibold whitespace-nowrap">Hasta:</label>
+              <input type="date" id="admin-end-date" class="p-2 border border-gray-300 rounded-lg w-full" />
+            </div>
+            <div class="flex gap-2 items-center">
+              <label class="font-semibold whitespace-nowrap">Tienda:</label>
+              <select id="admin-store-filter" class="p-2 border border-gray-300 rounded-lg w-full">
+                <option value="all">Todas</option>
+                <option value="506">506</option>
+                <option value="centro">Centro</option>
+                <option value="pavas">Pavas</option>
+                <option value="terramall">Terramall</option>
+                <option value="escazu">Escazú</option>
+                <option value="hot">Hot</option>
+                <option value="desamparados">Desamparados</option>
+                <option value="canonazo">Cańonazo</option>
+                <option value="sabanilla">Sabanilla</option>
+              </select>
+            </div>
+            <div class="flex gap-2 items-center">
+              <button id="admin-apply-filter" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center">
+                <i class="fas fa-filter mr-2"></i> Filtrar
+              </button>
+              <button id="admin-clear-filter" class="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 flex items-center">
+                <i class="fas fa-undo mr-2"></i> Limpiar
+              </button>
+            </div>
+          </div>
+          <div class="flex justify-end mb-4 gap-2">
+            <button id="admin-export-all" class="export-btn">
+              <i class="fas fa-file-archive mr-2"></i> Exportar por tienda
+            </button>
+            <button id="admin-export-all-in-one" class="export-btn bg-purple-600">
+              <i class="fas fa-file-excel mr-2"></i> Exportar todo en un archivo
+            </button>
+            <div id="export-status" class="ml-3 mt-2 text-sm hidden">
+              <i class="fas fa-spinner exporting-spinner mr-2"></i>
+              <span id="export-message">Exportando...</span>
+            </div>
+          </div>
+          <div id="admin-sales-list" class="space-y-3">
+            <!-- Ventas de administración se mostrarán aquí -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL ADMIN ANALYTICS -->
+  <div id="admin-analytics-modal" class="modal">
+    <div class="modal-content">
+        <div class="p-4 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
+            <h2 class="text-xl font-bold flex items-center">
+                <i class="fas fa-chart-line mr-2 text-purple-500"></i> Analytics del Día por Tienda
+            </h2>
+            <button id="close-admin-analytics-modal" class="bg-gray-500 text-white px-3 py-1 rounded-lg hover:bg-gray-600 flex items-center">
+                <i class="fas fa-times mr-1"></i> Cerrar
+            </button>
+        </div>
+        <div class="p-4 border-b sticky top-16 bg-white z-10 flex items-center gap-4">
+            <label class="font-semibold whitespace-nowrap">Filtrar por Tienda:</label>
+            <select id="admin-analytics-store-filter" class="p-2 border border-gray-300 rounded-lg w-full">
+                <option value="all">Todas</option>
+                <option value="506">506</option>
+                <option value="centro">Centro</option>
+                <option value="pavas">Pavas</option>
+                <option value="terramall">Terramall</option>
+                <option value="escazu">Escazú</option>
+                <option value="hot">Hot</option>
+                <option value="desamparados">Desamparados</option>
+                <option value="canonazo">Cańonazo</option>
+                <option value="sabanilla">Sabanilla</option>
+            </select>
+        </div>
+        <div class="overflow-auto p-6 max-h-[70vh]">
+            <div id="admin-analytics-content">
+                <!-- Contenido de analytics se mostrará aquí -->
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <!-- MODAL ADMIN ITEMS INSPECTION -->
+  <div id="admin-items-inspection-modal" class="modal">
+    <div class="modal-content">
+        <div class="p-4 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
+            <h2 class="text-xl font-bold flex items-center">
+                <i class="fas fa-tasks mr-2 text-teal-500"></i> Inspección de Artículos Vendidos
+            </h2>
+            <button id="close-admin-items-inspection-modal" class="bg-gray-500 text-white px-3 py-1 rounded-lg hover:bg-gray-600 flex items-center">
+                <i class="fas fa-times mr-1"></i> Cerrar
+            </button>
+        </div>
+        <div class="p-4 border-b sticky top-16 bg-gray-50 z-10 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="flex gap-2 items-center">
+                <label class="font-semibold whitespace-nowrap">Desde:</label>
+                <input type="date" id="inspection-start-date" class="p-2 border border-gray-300 rounded-lg w-full" />
+            </div>
+            <div class="flex gap-2 items-center">
+                <label class="font-semibold whitespace-nowrap">Hasta:</label>
+                <input type="date" id="inspection-end-date" class="p-2 border border-gray-300 rounded-lg w-full" />
+            </div>
+            <div class="flex gap-2 items-center">
+                <label class="font-semibold whitespace-nowrap">Tienda:</label>
+                <select id="inspection-store-filter" class="p-2 border border-gray-300 rounded-lg w-full">
+                    <option value="all">Todas</option>
+                    <option value="506">506</option>
+                    <option value="centro">Centro</option>
+                    <option value="pavas">Pavas</option>
+                    <option value="terramall">Terramall</option>
+                    <option value="escazu">Escazú</option>
+                    <option value="hot">Hot</option>
+                    <option value="desamparados">Desamparados</option>
+                    <option value="canonazo">Cańonazo</option>
+                    <option value="sabanilla">Sabanilla</option>
+                </select>
+            </div>
+            <div class="flex items-center">
+                <button id="inspection-apply-filter" class="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 flex items-center w-full">
+                    <i class="fas fa-filter mr-2"></i> Aplicar Filtros
+                </button>
+            </div>
+        </div>
+        <div id="admin-items-inspection-content" class="overflow-auto p-6 max-h-[65vh]">
+            <!-- Contenido de inspección se mostrará aquí -->
+        </div>
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    // Configuración de Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyDjlI3qysLRd41TW3QTImB2XvdrhZ6PV8g",
+      authDomain: "contador-214a3.firebaseapp.com",
+      projectId: "contador-214a3",
+      storageBucket: "contador-214a3.appspot.com",
+      messagingSenderId: "909890810354",
+      appId: "1:909890810354:web:007e7efd4281b25356bb6b"
+    };
+
+    // Inicializar Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // Variables y DOM
+    const users = { 
+      'admin@accesorios.com': { 
+        password: 'AdminSecure123!', 
+        stores: ['all'],
+        displayName: 'Admin'
+      },
+      'tienda506@accesorios.com': { 
+        password: 'T5062263', 
+        stores: ['506'],
+        displayName: '506-1'
+      },
+      'tienda506-2@accesorios.com': { 
+        password: 'T5062263*', 
+        stores: ['506'],
+        displayName: '506-2'
+      },
+      'centro1@accesorios.com': { 
+        password: 'Centro1Pass456$', 
+        stores: ['centro'],
+        displayName: 'Centro 1'
+      },
+      'centro2@accesorios.com': { 
+        password: 'Centro2Secure789#', 
+        stores: ['centro'],
+        displayName: 'Centro 2'
+      },
+      'pavas1@accesorios.com': { 
+        password: 'Pavas1Acc123$', 
+        stores: ['pavas'],
+        displayName: 'Pavas 1'
+      },
+      'pavas2@accesorios.com': { 
+        password: 'Pavas2Vent456#', 
+        stores: ['pavas'],
+        displayName: 'Pavas 2'
+      },
+      'terramall1@accesorios.com': { 
+        password: 'TerraMall1!789', 
+        stores: ['terramall'],
+        displayName: 'Terramall 1'
+      },
+      'terramall2@accesorios.com': { 
+        password: 'TerraMall2$012', 
+        stores: ['terramall'],
+        displayName: 'Terramall 2'
+      },
+      'escazu1@accesorios.com': { 
+        password: 'Escazu1Acc345#', 
+        stores: ['escazu'],
+        displayName: 'Escazú 1'
+      },
+      'escazu2@accesorios.com': { 
+        password: 'Escazu2Vent678!', 
+        stores: ['escazu'],
+        displayName: 'Escazú 2'
+      },
+      'hot1@accesorios.com': { 
+        password: 'Hot1Store901$', 
+        stores: ['hot'],
+        displayName: 'Hot 1'
+      },
+      'hot2@accesorios.com': { 
+        password: 'Hot2Tienda234#', 
+        stores: ['hot'],
+        displayName: 'Hot 2'
+      },
+      'desamparados1@accesorios.com': { 
+        password: 'Desampa1Acc567!', 
+        stores: ['desamparados'],
+        displayName: 'Desamparados 1'
+      },
+      'desamparados2@accesorios.com': { 
+        password: 'Desampa2Vent890$', 
+        stores: ['desamparados'],
+        displayName: 'Desamparados 2'
+      },
+      'canonazo1@accesorios.com': { 
+        password: 'Canonazo1Acc123#', 
+        stores: ['canonazo'],
+        displayName: 'Cańonazo 1'
+      },
+      'canonazo2@accesorios.com': { 
+        password: 'Canonazo2Vent456!', 
+        stores: ['canonazo'],
+        displayName: 'Cańonazo 2'
+      },
+      'sabanilla1@accesorios.com': { 
+        password: 'Sabanilla1Acc789$', 
+        stores: ['sabanilla'],
+        displayName: 'Sabanilla 1'
+      },
+      'sabanilla2@accesorios.com': { 
+        password: 'Sabanilla2Vent012#', 
+        stores: ['sabanilla'],
+        displayName: 'Sabanilla 2'
+      }
+    };
+    
+    // Referencias a elementos DOM
+    const loginForm = document.getElementById('login-form');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const storeSelect = document.getElementById('selected-store');
+    const errorMessage = document.getElementById('error-message');
+    const loginScreen = document.getElementById('login-screen');
+    const mainContent = document.getElementById('main-content');
+    const logoutBtn = document.getElementById('logout-btn');
+    const categorySelect = document.getElementById('selected-category');
+    const quantityInput = document.getElementById('item-quantity');
+    const addCategoryBtn = document.getElementById('add-category');
+    const paymentSelect = document.getElementById('selected-payment');
+    const manualTimeInput = document.getElementById('manual-time');
+    const saveSaleBtn = document.getElementById('save-sale');
+    const exportExcelBtn = document.getElementById('export-excel');
+    const clearAllBtn = document.getElementById('clear-all');
+    const viewSalesBtn = document.getElementById('view-sales');
+    const salesModal = document.getElementById('sales-modal');
+    const salesList = document.getElementById('sales-list');
+    const startDateInput = document.getElementById('start-date');
+    const endDateInput = document.getElementById('end-date');
+    const storeFilter = document.getElementById('store-filter');
+    const storeFilterContainer = document.getElementById('store-filter-container');
+    const applyFilterBtn = document.getElementById('apply-filter');
+    const clearFilterBtn = document.getElementById('clear-filter');
+    const syncFirebaseBtn = document.getElementById('sync-firebase-btn');
+    const toast = document.getElementById('toast');
+    const toastMessage = document.getElementById('toast-message');
+    const adminPanelBtn = document.getElementById('admin-panel-btn');
+    const adminModal = document.getElementById('admin-modal');
+    const usersOnlineList = document.getElementById('users-online-list');
+    const adminSalesList = document.getElementById('admin-sales-list');
+    const adminStartDate = document.getElementById('admin-start-date');
+    const adminEndDate = document.getElementById('admin-end-date');
+    const adminStoreFilter = document.getElementById('admin-store-filter');
+    const adminApplyFilter = document.getElementById('admin-apply-filter');
+    const adminClearFilter = document.getElementById('admin-clear-filter');
+    const adminExportAll = document.getElementById('admin-export-all');
+    const exportStatus = document.getElementById('export-status');
+    const exportMessage = document.getElementById('export-message');
+    const userLocations = document.getElementById('user-locations');
+    const currentUser = document.getElementById('current-user');
+    const closeSalesModal = document.getElementById('close-sales-modal');
+    const closeAdminModal = document.getElementById('close-admin-modal');
+    const closeEditModal = document.getElementById('close-edit-modal');
+    const analyticsBtn = document.getElementById('analytics-btn');
+    const analyticsModal = document.getElementById('analytics-modal');
+    const closeAnalyticsModal = document.getElementById('close-analytics-modal');
+    const decreaseQtyBtn = document.getElementById('decrease-qty');
+    const increaseQtyBtn = document.getElementById('increase-qty');
+    const currentSaleItems = document.getElementById('current-sale-items');
+    const lastSaleContainer = document.getElementById('last-sale-container');
+    const currentStoreBadge = document.getElementById('current-store-badge');
+    const editItemsContainer = document.getElementById('edit-items-container');
+    const addEditItemBtn = document.getElementById('add-edit-item');
+    const editPayment = document.getElementById('edit-payment');
+    const editManualTime = document.getElementById('edit-manual-time');
+    const saveEditBtn = document.getElementById('save-edit');
+    const deleteSaleBtn = document.getElementById('delete-sale');
+    const editSaleModal = document.getElementById('edit-sale-modal');
+    const editSaleId = document.getElementById('edit-sale-id');
+    const editSaleStore = document.getElementById('edit-sale-store');
+    const analyticsTodaySales = document.getElementById('analytics-today-sales');
+    const analyticsTodayItems = document.getElementById('analytics-today-items');
+    const analyticsAvgPerSale = document.getElementById('analytics-avg-per-sale');
+    const analyticsSalesProgress = document.getElementById('analytics-sales-progress');
+    const analyticsItemsProgress = document.getElementById('analytics-items-progress');
+    const analyticsSalesGoalPercent = document.getElementById('analytics-sales-goal-percent');
+    const analyticsItemsChange = document.getElementById('analytics-items-change');
+    const analyticsPaymentMethods = document.getElementById('analytics-payment-methods');
+    const analyticsMainPayment = document.getElementById('analytics-main-payment');
+    const analyticsMainPaymentPercent = document.getElementById('analytics-main-payment-percent');
+    const analyticsPaymentProgress = document.getElementById('analytics-payment-progress');
+    const paymentMethodsDetails = document.getElementById('payment-methods-details');
+    const adminExportAllInOne = document.getElementById('admin-export-all-in-one');
+    const adminAnalyticsBtn = document.getElementById('admin-analytics-btn');
+    const adminAnalyticsModal = document.getElementById('admin-analytics-modal');
+    const closeAdminAnalyticsModal = document.getElementById('close-admin-analytics-modal');
+    const adminAnalyticsStoreFilter = document.getElementById('admin-analytics-store-filter');
+    const adminAnalyticsContent = document.getElementById('admin-analytics-content');
+    const adminItemsInspectionBtn = document.getElementById('admin-items-inspection-btn');
+    const adminItemsInspectionModal = document.getElementById('admin-items-inspection-modal');
+    const closeAdminItemsInspectionModal = document.getElementById('close-admin-items-inspection-modal');
+    const adminItemsInspectionContent = document.getElementById('admin-items-inspection-content');
+    const inspectionStartDate = document.getElementById('inspection-start-date');
+    const inspectionEndDate = document.getElementById('inspection-end-date');
+    const inspectionStoreFilter = document.getElementById('inspection-store-filter');
+    const inspectionApplyFilter = document.getElementById('inspection-apply-filter');
+
+    // Variables de estado
+    let currentUserData = null;
+    let currentStore = '';
+    let saleItems = [];
+    let isMasterUser = false;
+    let salesData = {};
+    let activeSessions = {};
+    let inactivityTimer;
+    
+    // Constante para el inicio del día de negocio (8 AM en Costa Rica = UTC-6)
+    const BUSINESS_DAY_START_HOUR_UTC = 14; // 8 AM GMT-6 is 14:00 UTC
+
+    // --- NUEVA FUNCIÓN PARA GESTIONAR FECHA DE NEGOCIO ---
+    /**
+     * Obtiene la fecha de negocio para una fecha dada.
+     * El día de negocio empieza a las 8 AM hora de Costa Rica.
+     * @param {Date} dateObject - El objeto Date a convertir.
+     * @returns {Date} Un nuevo objeto Date que representa el inicio del día de negocio.
+     */
+    function getBusinessDate(dateObject = new Date()) {
+        const date = new Date(dateObject);
+        // Restamos 8 horas para alinear con el inicio del día de negocio (8 AM CR).
+        // Cualquier hora entre 00:00 y 07:59 CR pertenecerá al día anterior.
+        date.setHours(date.getHours() - (BUSINESS_DAY_START_HOUR_UTC - 8)); // 8 horas de diferencia con el inicio del dia
+        return date;
+    }
+
+    function toYYYYMMDD(date) {
+        return date.toISOString().split('T')[0];
+    }
+
+    // Funciones Toast
+    function showToast(msg, type = 'info') {
+      toastMessage.textContent = msg;
+      toast.className = '';
+      toast.classList.add('show');
+      
+      switch(type) {
+        case 'success':
+          toast.classList.add('toast-success');
+          break;
+        case 'error':
+          toast.classList.add('toast-error');
+          break;
+        case 'warning':
+          toast.classList.add('toast-warning');
+          break;
+        default:
+          toast.style.backgroundColor = 'rgba(0,0,0,0.85)';
+      }
+      
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // Funciones Firebase
+    async function backupSaleToFirebase(sale) {
+      try {
+        // Añadimos la fecha de negocio al objeto que se guarda en Firebase
+        const saleBusinessDate = getBusinessDate(new Date(sale.timestamp));
+        await db.collection('ventas').add({
+          ...sale,
+          businessDate: toYYYYMMDD(saleBusinessDate), // YYYY-MM-DD
+          backupTimestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        console.log("Venta respaldada en Firebase con fecha de negocio");
+      } catch (error) {
+        console.error("Error al respaldar venta:", error);
+        showToast('Error al respaldar venta: ' + error.message, 'error');
+      }
+    }
+
+    async function getSalesFromFirebase(store, startDate, endDate) {
+        // startDate y endDate son objetos Date del calendario (input type="date")
+        // Necesitamos buscar por 'businessDate' en lugar de 'timestamp'
+        const startBusinessDateStr = toYYYYMMDD(startDate);
+        const endBusinessDateStr = toYYYYMMDD(endDate);
+
+        try {
+            let query = db.collection('ventas');
+            
+            if (store && store !== 'all') {
+                query = query.where('store', '==', store);
+            }
+            
+            // Filtramos por el campo 'businessDate'
+            query = query.where('businessDate', '>=', startBusinessDateStr).where('businessDate', '<=', endBusinessDateStr);
+
+            const snapshot = await query.get();
+            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } catch (error) {
+            console.error("Error al obtener ventas:", error);
+            if (error.code === 'failed-precondition' || error.code === 'permission-denied') {
+                showToast('Error de índice en Firebase. Asegúrese de tener un índice compuesto para [store, businessDate].', 'error');
+            } else {
+                showToast('Error al obtener ventas: ' + error.message, 'error');
+            }
+            return [];
+        }
+    }
+
+
+    async function syncAllSalesToFirebase() {
+      if (!isMasterUser) return;
+      
+      try {
+        let total = 0;
+        
+        for (const [store, storeData] of Object.entries(salesData)) {
+          for (const sale of storeData.sales) {
+            // Asegurarse que las ventas viejas tengan businessDate antes de subirlas
+            if (!sale.businessDate) {
+                const saleBusinessDate = getBusinessDate(new Date(sale.timestamp));
+                sale.businessDate = toYYYYMMDD(saleBusinessDate);
+            }
+            await backupSaleToFirebase(sale);
+            total++;
+          }
+        }
+        
+        showToast(`Se sincronizaron ${total} ventas a Firebase`, 'success');
+      } catch (error)
+      {
+        showToast('Error al sincronizar ventas', 'error');
+        console.error("Error:", error);
+      }
+    }
+
+    // Almacenamiento local
+    function getLocalStorageData() {
+      const data = localStorage.getItem('salesData');
+      return data ? JSON.parse(data) : {};
+    }
+    
+    function saveLocalStorageData() {
+      localStorage.setItem('salesData', JSON.stringify(salesData));
+    }
+    
+    function initializeStoreData(store) {
+      if (!salesData[store]) {
+        salesData[store] = {
+          sales: [],
+        };
+      }
+    }
+    
+    function updateStoreStats(store, items, payment) {
+        saveLocalStorageData();
+    }
+
+    function calculateTodayStats(store) {
+        // Usamos la fecha de negocio para definir "hoy"
+        const todayBusinessDateStr = toYYYYMMDD(getBusinessDate());
+        initializeStoreData(store);
+        const storeData = salesData[store];
+
+        if (!storeData || !storeData.sales) {
+            return { todaySales: 0, todayItems: 0, paymentMethods: {} };
+        }
+
+        const todaySalesData = storeData.sales.filter(sale => {
+            // Comparamos con la fecha de negocio de la venta
+            const saleBusinessDateStr = toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)));
+            return saleBusinessDateStr === todayBusinessDateStr;
+        });
+
+        const stats = {
+            todaySales: todaySalesData.length,
+            todayItems: 0,
+            paymentMethods: {}
+        };
+
+        todaySalesData.forEach(sale => {
+            stats.todayItems += sale.items.reduce((sum, item) => sum + item.quantity, 0);
+            if (stats.paymentMethods[sale.payment]) {
+                stats.paymentMethods[sale.payment]++;
+            } else {
+                stats.paymentMethods[sale.payment] = 1;
+            }
+        });
+
+        return stats;
+    }
+
+    // Sesión
+    function saveSession(user, store) {
+      localStorage.setItem('currentUser', user);
+      localStorage.setItem('currentStore', store);
+      
+      if (!activeSessions[store]) activeSessions[store] = [];
+      if (!activeSessions[store].includes(user)) {
+        activeSessions[store].push(user);
+      }
+      localStorage.setItem('activeSessions', JSON.stringify(activeSessions));
+      
+      showToast(`Bienvenido ${users[user].displayName}`, 'success');
+      
+      resetInactivityTimer();
+    }
+
+    function loadSession() {
+      const u = localStorage.getItem('currentUser');
+      const s = localStorage.getItem('currentStore');
+      if (u && s) {
+        currentUserData = u;
+        currentStore = s;
+        isMasterUser = u === 'admin@accesorios.com';
+        return true;
+      }
+      return false;
+    }
+    
+    function clearSession() {
+      const user = localStorage.getItem('currentUser');
+      const store = localStorage.getItem('currentStore');
+      
+      if (user && store && activeSessions[store]) {
+        activeSessions[store] = activeSessions[store].filter(u => u !== user);
+        localStorage.setItem('activeSessions', JSON.stringify(activeSessions));
+      }
+      
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('currentStore');
+      currentUserData = null;
+      currentStore = '';
+      isMasterUser = false;
+      
+      clearTimeout(inactivityTimer);
+    }
+    
+    function resetInactivityTimer() {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(logoutDueToInactivity, 10 * 60 * 1000); // 10 minutos
+    }
+    
+    function logoutDueToInactivity() {
+      showToast('Sesión cerrada por inactividad', 'warning');
+      clearSession();
+      mainContent.classList.add('hidden');
+      loginScreen.classList.remove('hidden');
+    }
+
+    function showMainContent() {
+      loginScreen.classList.add('hidden');
+      mainContent.classList.remove('hidden');
+      
+      userLocations.innerHTML = `<i class="fas fa-map-marker-alt mr-2"></i> ${currentStore}`;
+      
+      currentUser.textContent = users[currentUserData].displayName;
+      currentStoreBadge.textContent = currentStore;
+      
+      adminPanelBtn.classList.toggle('hidden', !isMasterUser);
+      storeFilterContainer.classList.toggle('hidden', !isMasterUser);
+      
+      salesData = getLocalStorageData();
+      
+      updateSaleItemsDisplay();
+      loadLastSale();
+    }
+    
+    function updateAnalyticsStats() {
+      const stats = calculateTodayStats(currentStore);
+      
+      analyticsTodaySales.textContent = stats.todaySales;
+      analyticsTodayItems.textContent = stats.todayItems;
+      
+      const avg = stats.todaySales > 0 ? (stats.todayItems / stats.todaySales).toFixed(1) : 0;
+      analyticsAvgPerSale.textContent = avg;
+      
+      const salesPercent = Math.min(Math.round((stats.todaySales / 25) * 100), 100);
+      analyticsSalesProgress.style.width = `${salesPercent}%`;
+      analyticsSalesGoalPercent.textContent = `${salesPercent}%`;
+      
+      const itemsPercent = Math.min(Math.round((stats.todayItems / 100) * 100), 100);
+      analyticsItemsProgress.style.width = `${itemsPercent}%`;
+      analyticsItemsChange.textContent = `+${itemsPercent}%`;
+      
+      const paymentCount = Object.keys(stats.paymentMethods).length;
+      analyticsPaymentMethods.textContent = paymentCount;
+      
+      paymentMethodsDetails.innerHTML = '';
+      if (paymentCount > 0) {
+        let maxPayment = '';
+        let maxCount = 0;
+        let total = 0;
+        
+        for (const [payment, count] of Object.entries(stats.paymentMethods)) {
+          total += count;
+          if (count > maxCount) {
+            maxCount = count;
+            maxPayment = payment;
+          }
+        }
+        
+        const paymentPercent = total > 0 ? Math.round((maxCount / total) * 100) : 0;
+        analyticsMainPayment.textContent = maxPayment;
+        analyticsMainPaymentPercent.textContent = `${paymentPercent}%`;
+        analyticsPaymentProgress.style.width = `${paymentPercent}%`;
+        
+        for (const [payment, count] of Object.entries(stats.paymentMethods)) {
+          const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+          const paymentElement = document.createElement('div');
+          paymentElement.className = 'flex justify-between items-center py-2 border-b';
+          paymentElement.innerHTML = `
+            <div class="font-medium">${payment}</div>
+            <div class="flex items-center">
+              <span class="mr-2">${count} ventas</span>
+              <span class="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">${percent}%</span>
+            </div>
+          `;
+          paymentMethodsDetails.appendChild(paymentElement);
+        }
+      } else {
+        analyticsMainPayment.textContent = '-';
+        analyticsMainPaymentPercent.textContent = '0%';
+        analyticsPaymentProgress.style.width = '0%';
+        paymentMethodsDetails.innerHTML = '<p class="text-gray-500 text-center py-4">No hay datos de métodos de pago para hoy.</p>';
+      }
+    }
+
+    // Funciones de ventas
+    function addSaleItem() {
+      const category = categorySelect.value;
+      const quantity = parseInt(quantityInput.value) || 1;
+      
+      if (category) {
+        saleItems.push({ category, quantity });
+        updateSaleItemsDisplay();
+        showToast(`Agregado: ${quantity} ${category}`, 'success');
+      }
+    }
+    
+    function updateSaleItemsDisplay() {
+      currentSaleItems.innerHTML = '';
+      
+      if (saleItems.length === 0) {
+        currentSaleItems.innerHTML = `
+          <div class="text-center py-8 text-gray-500">
+            <i class="fas fa-shopping-cart text-3xl mb-2"></i>
+            <p>No hay artículos en esta venta</p>
+          </div>
+        `;
+        return;
+      }
+      
+      saleItems.forEach((item, index) => {
+        const itemElement = document.createElement('div');
+        itemElement.className = 'sale-item p-3 flex justify-between items-center';
+        itemElement.innerHTML = `
+          <div>
+            <span class="font-medium">${item.category}</span>
+            <span class="text-gray-600 text-sm ml-2">(${item.quantity} unidades)</span>
+          </div>
+          <button class="text-red-500 hover:text-red-700 remove-item" data-index="${index}">
+            <i class="fas fa-trash"></i>
+          </button>
+        `;
+        currentSaleItems.appendChild(itemElement);
+        
+        itemElement.querySelector('.remove-item').addEventListener('click', (e) => {
+          const index = parseInt(e.currentTarget.dataset.index);
+          const removedItem = saleItems.splice(index, 1)[0];
+          updateSaleItemsDisplay();
+          showToast(`Eliminado: ${removedItem.quantity} ${removedItem.category}`, 'warning');
+        });
+      });
+    }
+    
+    async function saveSale() {
+      if (saleItems.length === 0) {
+        showToast('Agregue artículos primero', 'error');
+        return;
+      }
+      
+      if (!paymentSelect.value) {
+        showToast('Seleccione método de pago', 'error');
+        return;
+      }
+      
+      const saleTimestamp = new Date();
+      const sale = {
+        id: saleTimestamp.getTime(),
+        store: currentStore,
+        user: currentUserData,
+        items: [...saleItems],
+        payment: paymentSelect.value,
+        manualTime: manualTimeInput.value || null,
+        timestamp: saleTimestamp.toISOString()
+      };
+      
+      try {
+        initializeStoreData(currentStore);
+        salesData[currentStore].sales.push(sale);
+        
+        updateStoreStats(currentStore, sale.items, sale.payment);
+        
+        await backupSaleToFirebase(sale);
+        
+        saleItems = [];
+        paymentSelect.selectedIndex = 0;
+        manualTimeInput.value = '';
+        quantityInput.value = '1';
+        
+        updateSaleItemsDisplay();
+        loadLastSale();
+        
+        showToast('Venta guardada exitosamente!', 'success');
+      } catch (error) {
+        showToast('Error al guardar la venta', 'error');
+        console.error('Error:', error);
+      }
+    }
+    
+    function clearAllItems() {
+      saleItems = [];
+      updateSaleItemsDisplay();
+      showToast('Todos los artículos fueron eliminados', 'warning');
+    }
+    
+    function loadLastSale() {
+      initializeStoreData(currentStore);
+      const sales = salesData[currentStore].sales;
+      
+      if (sales.length === 0) {
+        lastSaleContainer.innerHTML = `
+          <div class="text-center py-8 text-gray-500">
+            <i class="fas fa-receipt text-3xl mb-2"></i>
+            <p>No hay ventas registradas</p>
+          </div>
+        `;
+        return;
+      }
+      
+      const lastSale = sales[sales.length - 1];
+      const date = new Date(lastSale.timestamp);
+      let formattedDate = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+      
+      if (lastSale.manualTime) {
+        formattedDate = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${lastSale.manualTime}`;
+      }
+      
+      let itemsHtml = lastSale.items.map(item => 
+        `<li>${item.quantity} ${item.category}</li>`
+      ).join('');
+      
+      lastSaleContainer.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+          <div>
+            <div class="font-semibold text-gray-700">Fecha:</div>
+            <div>${formattedDate}</div>
+          </div>
+          <div>
+            <div class="font-semibold text-gray-700">Tienda:</div>
+            <div>${lastSale.store}</div>
+          </div>
+          <div>
+            <div class="font-semibold text-gray-700">Método de pago:</div>
+            <div>${lastSale.payment}</div>
+          </div>
+        </div>
+        <div class="font-semibold text-gray-700 mb-2">Artículos:</div>
+        <ul class="list-disc pl-5">
+          ${itemsHtml}
+        </ul>
+      `;
+    }
+    
+    function openEditModal(saleId) {
+      let saleToEdit = null;
+      let saleStore = '';
+      
+      for (const [store, data] of Object.entries(salesData)) {
+        const sale = data.sales.find(s => s.id === saleId);
+        if (sale) {
+          saleToEdit = sale;
+          saleStore = store;
+          break;
+        }
+      }
+      
+      if (!saleToEdit) return;
+      
+      editSaleId.value = saleId;
+      editSaleStore.value = saleStore;
+      
+      editItemsContainer.innerHTML = '';
+      
+      saleToEdit.items.forEach((item, index) => {
+        const itemElement = document.createElement('div');
+        itemElement.className = 'edit-item-row';
+        itemElement.innerHTML = `
+          <select class="p-2 border border-gray-300 rounded-lg flex-1 edit-item-category">
+            <option value="Articulos" ${item.category === 'Articulos' ? 'selected' : ''}>Artículos</option>
+            <option value="Articulos (P)" ${item.category === 'Articulos (P)' ? 'selected' : ''}>Artículos (P)</option>
+            <option value="Bisuteria" ${item.category === 'Bisuteria' ? 'selected' : ''}>Bisutería</option>
+            <option value="Bisuteria (P)" ${item.category === 'Bisuteria (P)' ? 'selected' : ''}>Bisutería (P)</option>
+            <option value="Zapato" ${item.category === 'Zapato' ? 'selected' : ''}>Zapato</option>
+            <option value="Zapato (P)" ${item.category === 'Zapato (P)' ? 'selected' : ''}>Zapato (P)</option>
+            <option value="Prenda" ${item.category === 'Prenda' ? 'selected' : ''}>Prenda</option>
+            <option value="Prenda (P)" ${item.category === 'Prenda (P)' ? 'selected' : ''}>Prenda (P)</option>
+            <option value="B.Eco" ${item.category === 'B.Eco' ? 'selected' : ''}>B.Eco</option>
+            <option value="Articulos (v)" ${item.category === 'Articulos (v)' ? 'selected' : ''}>Artículos (v)</option>
+            <option value="Articulos (P) (v)" ${item.category === 'Articulos (P) (v)' ? 'selected' : ''}>Artículos (P) (v)</option>
+            <option value="Bisuteria (v)" ${item.category === 'Bisuteria (v)' ? 'selected' : ''}>Bisutería (v)</option>
+            <option value="Bisuteria (P) (v)" ${item.category === 'Bisuteria (P) (v)' ? 'selected' : ''}>Bisutería (P) (v)</option>
+            <option value="Zapato (v)" ${item.category === 'Zapato (v)' ? 'selected' : ''}>Zapato (v)</option>
+            <option value="Zapato (P) (v)" ${item.category === 'Zapato (P) (v)' ? 'selected' : ''}>Zapato (P) (v)</option>
+            <option value="Prenda (v)" ${item.category === 'Prenda (v)' ? 'selected' : ''}>Prenda (v)</option>
+            <option value="Prenda (P) (v)" ${item.category === 'Prenda (P) (v)' ? 'selected' : ''}>Prenda (P) (v)</option>
+            <option value="B.Eco (v)" ${item.category === 'B.Eco (v)' ? 'selected' : ''}>B.Eco (v)</option>
+          </select>
+          <input type="number" min="1" value="${item.quantity}" class="w-20 p-2 border border-gray-300 rounded-lg edit-item-quantity">
+          <button class="remove-edit-item bg-red-100 text-red-600 p-2 rounded-lg">
+            <i class="fas fa-trash"></i>
+          </button>
+        `;
+        editItemsContainer.appendChild(itemElement);
+        
+        itemElement.querySelector('.remove-edit-item').addEventListener('click', () => {
+          itemElement.remove();
+        });
+      });
+      
+      editPayment.value = saleToEdit.payment;
+      editManualTime.value = saleToEdit.manualTime || '';
+      
+      editSaleModal.classList.add('show');
+    }
+    
+    function saveEditedSale() {
+      const saleId = parseInt(editSaleId.value);
+      const store = editSaleStore.value;
+      if (!saleId || !store) return;
+      
+      const storeData = salesData[store];
+      if (!storeData) return;
+      
+      const saleIndex = storeData.sales.findIndex(s => s.id === saleId);
+      if (saleIndex === -1) return;
+      
+      const saleToEdit = storeData.sales[saleIndex];
+      
+      saleToEdit.items = [];
+      document.querySelectorAll('.edit-item-row').forEach(row => {
+        const category = row.querySelector('.edit-item-category').value;
+        const quantity = parseInt(row.querySelector('.edit-item-quantity').value) || 1;
+        
+        if (category) {
+          saleToEdit.items.push({ category, quantity });
+        }
+      });
+      
+      saleToEdit.payment = editPayment.value;
+      saleToEdit.manualTime = editManualTime.value || null;
+      
+      saveLocalStorageData();
+      
+      loadSales();
+      loadLastSale();
+      
+      editSaleModal.classList.remove('show');
+      
+      showToast('Venta actualizada exitosamente', 'success');
+    }
+    
+    function deleteSale() {
+      const saleId = parseInt(editSaleId.value);
+      const store = editSaleStore.value;
+      if (!saleId || !store) return;
+      
+      const storeData = salesData[store];
+      if (storeData) {
+        const index = storeData.sales.findIndex(s => s.id === saleId);
+        if (index !== -1) {
+          storeData.sales.splice(index, 1);
+          saveLocalStorageData();
+          loadSales();
+          loadLastSale();
+          editSaleModal.classList.remove('show');
+          showToast('Venta eliminada exitosamente', 'success');
+        }
+      }
+    }
+    
+    async function loadSales() {
+        const startDateVal = startDateInput.value;
+        const endDateVal = endDateInput.value;
+
+        if (!startDateVal || !endDateVal) {
+            showToast('Por favor, seleccione un rango de fechas.', 'warning');
+            return;
+        }
+
+        const startDate = new Date(startDateVal);
+        const endDate = new Date(endDateVal);
+
+        const store = isMasterUser ? storeFilter.value : currentStore;
+
+        salesList.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando ventas...</div>';
+
+        let allSales = [];
+        if (isMasterUser) {
+            allSales = await getSalesFromFirebase(store, startDate, endDate);
+        } else {
+            const localSales = (salesData[store] && salesData[store].sales) ? salesData[store].sales : [];
+            const startBusinessDateStr = toYYYYMMDD(startDate);
+            const endBusinessDateStr = toYYYYMMDD(endDate);
+
+            allSales = localSales.filter(sale => {
+                const saleBusinessDateStr = toYYYYMMDD(getBusinessDate(new Date(sale.timestamp)));
+                return saleBusinessDateStr >= startBusinessDateStr && saleBusinessDateStr <= endBusinessDateStr;
+            });
+        }
+        
+        displaySales(allSales, store);
+    }
+    
+    function displaySales(sales, storeFilterValue) {
+      salesList.innerHTML = '';
+      if (sales.length === 0) {
+        salesList.innerHTML = `
+          <div class="text-center py-8 text-gray-500">
+            <i class="fas fa-receipt text-3xl mb-2"></i>
+            <p>No hay ventas en el rango seleccionado</p>
+          </div>
+        `;
+        return;
+      }
+      
+      const salesByStore = {};
+      sales.forEach(s => {
+          if (!salesByStore[s.store]) salesByStore[s.store] = [];
+          salesByStore[s.store].push(s);
+      });
+
+      Object.keys(salesByStore).sort().forEach(storeName => {
+          if (storeFilterValue === 'all' || storeFilterValue === storeName) {
+            const storeHeader = document.createElement('div');
+            storeHeader.className = 'font-bold text-lg mt-4 mb-2 text-blue-600';
+            storeHeader.textContent = `Tienda: ${storeName}`;
+            salesList.appendChild(storeHeader);
+            
+            salesByStore[storeName]
+              .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+              .forEach(sale => createSaleElement(sale));
+          }
+      });
+
+      document.querySelectorAll('.edit-sale-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const saleId = parseInt(btn.dataset.id);
+          openEditModal(saleId);
+        });
+      });
+      
+      document.querySelectorAll('.delete-sale-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const saleId = parseInt(btn.dataset.id);
+          if (confirm('żEstás seguro de eliminar esta venta?')) {
+            deleteSaleById(saleId);
+          }
+        });
+      });
+    }
+
+    function deleteSaleById(saleId) {
+        for (const [store, data] of Object.entries(salesData)) {
+            const index = data.sales.findIndex(s => s.id === saleId);
+            if (index !== -1) {
+                data.sales.splice(index, 1);
+                saveLocalStorageData();
+                loadSales();
+                loadLastSale();
+                showToast('Venta eliminada exitosamente', 'success');
+                return;
+            }
+        }
+    }
+    
+    function createSaleElement(sale) {
+      const dateObj = new Date(sale.timestamp);
+      let formattedDate = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()} ${dateObj.getHours()}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+      
+      if (sale.manualTime) {
+        formattedDate = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()} ${sale.manualTime}`;
+      }
+      
+      let itemsHtml = sale.items.map(item => 
+        `<li>${item.quantity} ${item.category}</li>`
+      ).join('');
+      
+      const saleElement = document.createElement('div');
+      saleElement.className = 'border border-gray-200 rounded-lg p-4 mb-3';
+      saleElement.innerHTML = `
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="font-semibold">${formattedDate}</div>
+            <div class="text-sm text-gray-600">Usuario: ${users[sale.user]?.displayName || sale.user}</div>
+          </div>
+          <div class="flex gap-2">
+            <button class="edit-sale-btn bg-yellow-500 text-white px-3 py-1 rounded-lg" data-id="${sale.id}">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="delete-sale-btn bg-red-500 text-white px-3 py-1 rounded-lg" data-id="${sale.id}">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </div>
+        <div class="mt-2">
+          <div class="font-semibold">Método de pago: ${sale.payment}</div>
+          <div class="font-semibold mt-1">Artículos:</div>
+          <ul class="list-disc pl-5">
+            ${itemsHtml}
+          </ul>
+        </div>
+      `;
+      
+      salesList.appendChild(saleElement);
+    }
+    
+    async function loadAdminData() {
+        await loadAdminSales();
+    }
+
+    async function loadAdminSales() {
+        const startDateVal = adminStartDate.value;
+        const endDateVal = adminEndDate.value;
+
+        if (!startDateVal || !endDateVal) {
+            showToast('Por favor, seleccione un rango de fechas.', 'warning');
+            return;
+        }
+
+        const startDate = new Date(startDateVal);
+        const endDate = new Date(endDateVal);
+
+        const store = adminStoreFilter.value;
+        
+        adminSalesList.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando ventas...</div>';
+        
+        const firebaseSales = await getSalesFromFirebase(store, startDate, endDate);
+        
+        adminSalesList.innerHTML = '';
+        if (firebaseSales.length === 0) {
+          adminSalesList.innerHTML = `
+            <div class="text-center py-8 text-gray-500">
+              <i class="fas fa-receipt text-3xl mb-2"></i>
+              <p>No hay ventas en el rango seleccionado</p>
+            </div>
+          `;
+          return;
+        }
+        
+        const salesByStore = {};
+        firebaseSales.forEach(sale => {
+          if (!salesByStore[sale.store]) {
+            salesByStore[sale.store] = [];
+          }
+          salesByStore[sale.store].push(sale);
+        });
+        
+        Object.keys(salesByStore).sort().forEach(storeName => {
+            const storeHeader = document.createElement('div');
+            storeHeader.className = 'font-bold text-lg mt-4 mb-2 text-blue-600';
+            storeHeader.textContent = `Tienda: ${storeName}`;
+            adminSalesList.appendChild(storeHeader);
+            
+            salesByStore[storeName]
+                .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp))
+                .forEach(sale => createAdminSaleElement(sale));
+        });
+    }
+
+    async function showAdminItemsInspection() {
+        const today = getBusinessDate();
+        inspectionStartDate.value = toYYYYMMDD(today);
+        inspectionEndDate.value = toYYYYMMDD(today);
+        inspectionStoreFilter.value = 'all';
+        adminItemsInspectionModal.classList.add('show');
+        await loadAdminItemsInspection();
+    }
+
+    async function loadAdminItemsInspection() {
+        const startDateVal = inspectionStartDate.value;
+        const endDateVal = inspectionEndDate.value;
+        const store = inspectionStoreFilter.value;
+
+        if (!startDateVal || !endDateVal) {
+            showToast('Por favor, seleccione un rango de fechas.', 'warning');
+            return;
+        }
+
+        const startDate = new Date(startDateVal);
+        const endDate = new Date(endDateVal);
+        
+        adminItemsInspectionContent.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando resumen...</div>';
+
+        const sales = await getSalesFromFirebase(store, startDate, endDate);
+
+        if (sales.length === 0) {
+            adminItemsInspectionContent.innerHTML = '<p class="text-gray-500 text-center py-8">No hay artículos vendidos en el período seleccionado.</p>';
+            return;
+        }
+
+        const group1Categories = ['Articulos', 'Prenda', 'Bisuteria', 'Zapato', 'B.Eco'];
+        const group2Categories = ['Articulos (P)', 'Prenda (P)', 'Bisuteria (P)', 'Zapato (P)'];
+        const vipCategories = group1Categories.map(c => c + ' (v)').concat(group2Categories.map(c => c + ' (v)'));
+
+        const group1Counts = {};
+        const group2Counts = {};
+        const vipCounts = {};
+
+        group1Categories.forEach(cat => group1Counts[cat] = 0);
+        group2Categories.forEach(cat => group2Counts[cat] = 0);
+        vipCategories.forEach(cat => vipCounts[cat] = 0);
+
+        sales.forEach(sale => {
+            sale.items.forEach(item => {
+                if (vipCategories.includes(item.category)) {
+                    vipCounts[item.category] += item.quantity;
+                } else if (group1Categories.includes(item.category)) {
+                    group1Counts[item.category] += item.quantity;
+                } else if (group2Categories.includes(item.category)) {
+                    group2Counts[item.category] += item.quantity;
+                }
+            });
+        });
+
+        let html = '';
+
+        html += `<h3 class="text-lg font-semibold text-gray-800 mb-3">Clasificación General</h3>`;
+        html += `<ul class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">`;
+        group1Categories.forEach(category => {
+            html += `<li class="bg-white p-3 rounded-lg shadow-md border flex justify-between items-center">
+                        <span class="font-medium text-gray-800">${category}</span>
+                        <span class="font-bold text-lg text-blue-600">${group1Counts[category]}</span>
+                     </li>`;
+        });
+        html += `</ul>`;
+
+        html += `<h3 class="text-lg font-semibold text-gray-800 mb-3">Clasificación (P)</h3>`;
+        html += `<ul class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">`;
+        group2Categories.forEach(category => {
+            html += `<li class="bg-white p-3 rounded-lg shadow-md border flex justify-between items-center">
+                        <span class="font-medium text-gray-800">${category}</span>
+                        <span class="font-bold text-lg text-blue-600">${group2Counts[category]}</span>
+                     </li>`;
+        });
+        html += `</ul>`;
+
+        html += `<h3 class="text-lg font-semibold text-gray-800 mb-3">Clasificación VIP (v)</h3>`;
+        html += `<ul class="grid grid-cols-2 md:grid-cols-3 gap-4">`;
+        vipCategories.forEach(category => {
+            if (vipCounts[category] > 0) {
+              html += `<li class="bg-purple-50 p-3 rounded-lg shadow-md border border-purple-200 flex justify-between items-center">
+                          <span class="font-medium text-purple-800">${category}</span>
+                          <span class="font-bold text-lg text-purple-600">${vipCounts[category]}</span>
+                       </li>`;
+            }
+        });
+        html += `</ul>`;
+
+
+        adminItemsInspectionContent.innerHTML = html;
+    }
+
+    function createAdminSaleElement(sale) {
+      const dateObj = new Date(sale.timestamp);
+      let formattedDate = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()} ${dateObj.getHours()}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+      
+      if (sale.manualTime) {
+        formattedDate = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()} ${sale.manualTime}`;
+      }
+      
+      let itemsHtml = sale.items.map(item => 
+        `<li>${item.quantity} ${item.category}</li>`
+      ).join('');
+      
+      const saleElement = document.createElement('div');
+      saleElement.className = 'border border-gray-200 rounded-lg p-4 mb-3';
+      saleElement.innerHTML = `
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="font-semibold">${formattedDate}</div>
+            <div class="text-sm text-gray-600">Usuario: ${users[sale.user]?.displayName || sale.user}</div>
+            <div class="text-sm text-gray-600">Tienda: ${sale.store}</div>
+          </div>
+        </div>
+        <div class="mt-2">
+          <div class="font-semibold">Método de pago: ${sale.payment}</div>
+          <div class="font-semibold mt-1">Artículos:</div>
+          <ul class="list-disc pl-5">
+            ${itemsHtml}
+          </ul>
+        </div>
+      `;
+      adminSalesList.appendChild(saleElement);
+    }
+    
+    function loadOnlineUsers() {
+      usersOnlineList.innerHTML = '';
+      
+      for (const [store, usersList] of Object.entries(activeSessions)) {
+        if (usersList.length === 0) continue;
+        
+        const storeHeader = document.createElement('div');
+        storeHeader.className = 'col-span-full font-semibold text-gray-700 mt-4';
+        storeHeader.textContent = `Tienda: ${store}`;
+        usersOnlineList.appendChild(storeHeader);
+        
+        usersList.forEach(user => {
+          const userElement = document.createElement('div');
+          userElement.className = 'bg-white p-4 rounded-lg shadow border border-gray-200';
+          userElement.innerHTML = `
+            <div class="flex justify-between items-center">
+              <div>
+                <div class="font-medium flex items-center">
+                  <span class="online-status online"></span>
+                  ${users[user]?.displayName || user}
+                </div>
+                <div class="text-sm text-gray-600">${store}</div>
+              </div>
+              <button class="disconnect-user bg-red-500 text-white px-3 py-1 rounded-lg" data-user="${user}" data-store="${store}">
+                <i class="fas fa-plug mr-1"></i> Desconectar
+              </button>
+            </div>
+          `;
+          usersOnlineList.appendChild(userElement);
+        });
+      }
+      
+      document.querySelectorAll('.disconnect-user').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const user = btn.dataset.user;
+          const store = btn.dataset.store;
+          
+          if (activeSessions[store]) {
+            activeSessions[store] = activeSessions[store].filter(u => u !== user);
+            localStorage.setItem('activeSessions', JSON.stringify(activeSessions));
+            loadOnlineUsers();
+            showToast(`Usuario ${users[user]?.displayName || user} desconectado de ${store}`, 'success');
+          }
+        });
+      });
+    }
+    
+    function generateWorkbookForStore(storeName, sales) {
+      const categories = [
+        'Articulos', 'Articulos (P)', 'Bisuteria', 'Bisuteria (P)', 
+        'Zapato', 'Zapato (P)', 'Prenda', 'Prenda (P)', 'B.Eco',
+        'Articulos (v)', 'Articulos (P) (v)', 'Bisuteria (v)', 'Bisuteria (P) (v)', 
+        'Zapato (v)', 'Zapato (P) (v)', 'Prenda (v)', 'Prenda (P) (v)', 'B.Eco (v)'
+      ];
+      
+      const excelData = [];
+      
+      const headers = ['Fecha', 'Hora', 'Ubicación', 'Método de Pago', ...categories];
+      excelData.push(headers);
+      
+      sales.forEach(sale => {
+        const dateObj = new Date(sale.timestamp);
+        const date = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()}`;
+        let time = `${dateObj.getHours()}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+        
+        if (sale.manualTime) {
+          time = sale.manualTime;
+        }
+        
+        const row = [date, time, sale.store, sale.payment];
+        
+        const categoryCounts = {};
+        categories.forEach(cat => categoryCounts[cat] = 0);
+        
+        sale.items.forEach(item => {
+          if (categoryCounts.hasOwnProperty(item.category)) {
+            categoryCounts[item.category] += item.quantity;
+          }
+        });
+        
+        categories.forEach(cat => {
+          row.push(categoryCounts[cat] || 0);
+        });
+        
+        excelData.push(row);
+      });
+      
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(excelData);
+      XLSX.utils.book_append_sheet(wb, ws, storeName);
+      return wb;
+    }
+    
+    async function exportStoreToExcel(storeName) {
+        const startDate = new Date(adminStartDate.value);
+        const endDate = new Date(adminEndDate.value);
+      
+      try {
+        const sales = await getSalesFromFirebase(storeName, startDate, endDate);
+        
+        if (!sales || sales.length === 0) {
+          showToast(`No hay ventas para exportar en ${storeName}`, 'warning');
+          return null;
+        }
+        
+        return generateWorkbookForStore(storeName, sales);
+      } catch (error) {
+        showToast(`Error al exportar ${storeName}: ${error.message}`, 'error');
+        return null;
+      }
+    }
+    
+    async function exportAllStores() {
+      const stores = [
+        '506', 'centro', 'pavas', 'terramall', 
+        'escazu', 'hot', 'desamparados', 'canonazo', 'sabanilla'
+      ];
+      
+      exportStatus.classList.remove('hidden');
+      const zip = new JSZip();
+
+      try {
+        for (const store of stores) {
+          exportMessage.textContent = `Exportando ${store}...`;
+          const wb = await exportStoreToExcel(store);
+          
+          if (wb) {
+              const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+              zip.file(`${store}_ventas.xlsx`, wbout);
+          }
+        }
+        
+        if (Object.keys(zip.files).length > 0) {
+            zip.generateAsync({ type: 'blob' }).then(content => {
+                saveAs(content, 'Reporte_Todas_las_Tiendas.zip');
+                showToast('Exportación completa de todas las tiendas en un ZIP', 'success');
+            });
+        } else {
+            showToast('No se encontraron ventas para exportar en ninguna tienda.', 'warning');
+        }
+
+      } catch (error) {
+        showToast('Error en exportación completa: ' + error.message, 'error');
+      } finally {
+        exportStatus.classList.add('hidden');
+      }
+    }
+    
+    async function exportAllInOneExcel() {
+        const startDate = new Date(adminStartDate.value);
+        const endDate = new Date(adminEndDate.value);
+      
+      try {
+        exportStatus.classList.remove('hidden');
+        exportMessage.textContent = 'Recopilando datos de todas las tiendas...';
+        
+        const allSales = await getSalesFromFirebase('all', startDate, endDate);
+        
+        if (allSales.length === 0) {
+          showToast('No hay ventas para exportar', 'warning');
+          exportStatus.classList.add('hidden');
+          return;
+        }
+        
+        const wb = generateWorkbookForAllStores(allSales);
+        XLSX.writeFile(wb, `Todas_las_ventas.xlsx`);
+        showToast('Exportación completa en un solo archivo', 'success');
+      } catch (error) {
+        showToast(`Error al exportar: ${error.message}`, 'error');
+      } finally {
+        exportStatus.classList.add('hidden');
+      }
+    }
+
+    function generateWorkbookForAllStores(sales) {
+      const categories = [
+        'Articulos', 'Articulos (P)', 'Bisuteria', 'Bisuteria (P)', 
+        'Zapato', 'Zapato (P)', 'Prenda', 'Prenda (P)', 'B.Eco',
+        'Articulos (v)', 'Articulos (P) (v)', 'Bisuteria (v)', 'Bisuteria (P) (v)', 
+        'Zapato (v)', 'Zapato (P) (v)', 'Prenda (v)', 'Prenda (P) (v)', 'B.Eco (v)'
+      ];
+      
+      const excelData = [];
+      const headers = ['Fecha', 'Hora', 'Tienda', 'Método de Pago', ...categories];
+      excelData.push(headers);
+      
+      sales.forEach(sale => {
+        const dateObj = new Date(sale.timestamp);
+        const date = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()}`;
+        let time = `${dateObj.getHours()}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+        
+        if (sale.manualTime) {
+          time = sale.manualTime;
+        }
+        
+        const row = [date, time, sale.store, sale.payment];
+        
+        const categoryCounts = {};
+        categories.forEach(cat => categoryCounts[cat] = 0);
+        
+        sale.items.forEach(item => {
+          if (categoryCounts.hasOwnProperty(item.category)) {
+            categoryCounts[item.category] += item.quantity;
+          }
+        });
+        
+        categories.forEach(cat => {
+          row.push(categoryCounts[cat] || 0);
+        });
+        
+        excelData.push(row);
+      });
+      
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(excelData);
+      XLSX.utils.book_append_sheet(wb, ws, "Todas las ventas");
+      return wb;
+    }
+    
+    function exportToExcel() {
+      const storeData = salesData[currentStore];
+      if (!storeData || storeData.sales.length === 0) {
+        showToast('No hay ventas para exportar', 'error');
+        return;
+      }
+      
+      const wb = generateWorkbookForStore(currentStore, storeData.sales);
+      XLSX.writeFile(wb, `${currentStore}_ventas.xlsx`);
+      showToast('Exportación completada', 'success');
+    }
+
+    async function showAdminAnalytics() {
+        adminAnalyticsModal.classList.add('show');
+        await updateAdminAnalyticsView();
+    }
+
+    async function updateAdminAnalyticsView() {
+        const selectedStore = adminAnalyticsStoreFilter.value;
+        const today = getBusinessDate();
+        const startDate = new Date(toYYYYMMDD(today));
+        const endDate = new Date(toYYYYMMDD(today));
+
+        adminAnalyticsContent.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando analytics...</div>';
+        
+        const sales = await getSalesFromFirebase(selectedStore, startDate, endDate);
+
+        const stats = {
+            todaySales: sales.length,
+            todayItems: 0,
+            paymentMethods: {}
+        };
+
+        sales.forEach(sale => {
+            stats.todayItems += sale.items.reduce((sum, item) => sum + item.quantity, 0);
+            if (stats.paymentMethods[sale.payment]) {
+                stats.paymentMethods[sale.payment]++;
+            } else {
+                stats.paymentMethods[sale.payment] = 1;
+            }
+        });
+        
+        adminAnalyticsContent.innerHTML = createAnalyticsHTML(stats, `Estadísticas para: ${selectedStore === 'all' ? 'Todas las tiendas' : selectedStore}`);
+    }
+
+    function createAnalyticsHTML(stats, title) {
+        const avg = stats.todaySales > 0 ? (stats.todayItems / stats.todaySales).toFixed(1) : 0;
+        const salesPercent = Math.min(Math.round((stats.todaySales / 25) * 100), 100);
+        const itemsPercent = Math.min(Math.round((stats.todayItems / 100) * 100), 100);
+        const paymentCount = Object.keys(stats.paymentMethods).length;
+        
+        let mainPayment = '-';
+        let mainPaymentPercent = 0;
+        let paymentProgress = 0;
+        let paymentDetailsHTML = '<p class="text-gray-500 text-center py-4">No hay datos de métodos de pago para hoy.</p>';
+
+        if (paymentCount > 0) {
+            let maxCount = 0;
+            let total = 0;
+            Object.entries(stats.paymentMethods).forEach(([payment, count]) => {
+                total += count;
+                if (count > maxCount) {
+                    maxCount = count;
+                    mainPayment = payment;
+                }
+            });
+            mainPaymentPercent = total > 0 ? Math.round((maxCount / total) * 100) : 0;
+            paymentProgress = mainPaymentPercent;
+            
+            paymentDetailsHTML = Object.entries(stats.paymentMethods).map(([payment, count]) => {
+                const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+                return `<div class="flex justify-between items-center py-2 border-b">
+                    <div class="font-medium">${payment}</div>
+                    <div class="flex items-center">
+                        <span class="mr-2">${count} ventas</span>
+                        <span class="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">${percent}%</span>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        return `
+            <h3 class="text-xl font-bold mb-4">${title}</h3>
+            <div class="analytics-grid">
+              <div class="stats-card p-5">
+                <div class="flex justify-between items-center">
+                  <div><h3 class="text-lg font-semibold text-gray-700">Ventas Hoy</h3><p class="text-2xl font-bold mt-1">${stats.todaySales}</p></div>
+                  <div class="bg-blue-100 p-3 rounded-full"><i class="fas fa-shopping-bag text-blue-600 text-xl"></i></div>
+                </div>
+                <div class="mt-4">
+                  <div class="flex justify-between text-sm text-gray-600 mb-1"><span>Meta: 25 ventas</span><span>${salesPercent}%</span></div>
+                  <div class="progress-bar"><div class="progress-fill bg-blue-500" style="width: ${salesPercent}%"></div></div>
+                </div>
+              </div>
+              <div class="stats-card p-5">
+                <div class="flex justify-between items-center">
+                  <div><h3 class="text-lg font-semibold text-gray-700">Artículos Vendidos</h3><p class="text-2xl font-bold mt-1">${stats.todayItems}</p></div>
+                  <div class="bg-green-100 p-3 rounded-full"><i class="fas fa-tags text-green-600 text-xl"></i></div>
+                </div>
+                <div class="mt-4">
+                  <div class="flex justify-between text-sm text-gray-600 mb-1"><span>Promedio por venta: ${avg}</span><span>+${itemsPercent}%</span></div>
+                  <div class="progress-bar"><div class="progress-fill bg-green-500" style="width: ${itemsPercent}%"></div></div>
+                </div>
+              </div>
+              <div class="stats-card p-5">
+                <div class="flex justify-between items-center">
+                  <div><h3 class="text-lg font-semibold text-gray-700">Métodos de Pago</h3><p class="text-2xl font-bold mt-1">${paymentCount}</p></div>
+                  <div class="bg-purple-100 p-3 rounded-full"><i class="fas fa-credit-card text-purple-600 text-xl"></i></div>
+                </div>
+                <div class="mt-4">
+                  <div class="flex justify-between text-sm text-gray-600 mb-1"><span>Principal: ${mainPayment}</span><span>${mainPaymentPercent}%</span></div>
+                  <div class="progress-bar"><div class="progress-fill bg-purple-500" style="width: ${paymentProgress}%"></div></div>
+                </div>
+              </div>
+            </div>
+            <div class="mt-6 bg-white p-5 rounded-xl shadow">
+              <h3 class="text-lg font-semibold mb-4 flex items-center"><i class="fas fa-list mr-2 text-blue-500"></i> Detalle de Métodos de Pago</h3>
+              <div class="space-y-2">${paymentDetailsHTML}</div>
+            </div>`;
+    }
+    
+    // Inicializar
+    document.addEventListener('DOMContentLoaded', () => {
+      activeSessions = JSON.parse(localStorage.getItem('activeSessions') || '{}');
+      
+      // Inicializar los selectores de fecha con la fecha de negocio actual
+      const today = getBusinessDate();
+      const todayStr = toYYYYMMDD(today);
+      startDateInput.value = todayStr;
+      endDateInput.value = todayStr;
+      adminStartDate.value = todayStr;
+      adminEndDate.value = todayStr;
+
+      if (loadSession()) {
+        showMainContent();
+      } else {
+        loginScreen.classList.remove('hidden');
+      }
+
+      loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value;
+        const store = storeSelect.value;
+        
+        if (!username || !password || !store) {
+          errorMessage.textContent = 'Usuario, contraseńa y tienda requeridos';
+          errorMessage.classList.remove('hidden');
+          return;
+        }
+        
+        const user = users[username];
+        if (user && user.password === password) {
+          if (username !== 'admin@accesorios.com' && !user.stores.includes(store)) {
+            errorMessage.textContent = 'No tiene acceso a esta tienda';
+            errorMessage.classList.remove('hidden');
+            return;
+          }
+          
+          if (username !== 'admin@accesorios.com') {
+            if (activeSessions[store] && activeSessions[store].length >= 2) {
+              errorMessage.textContent = 'Límite de usuarios alcanzado para esta tienda';
+              errorMessage.classList.remove('hidden');
+              return;
+            }
+          }
+          
+          currentUserData = username;
+          currentStore = store;
+          isMasterUser = username === 'admin@accesorios.com';
+          saveSession(username, store);
+          showMainContent();
+        } else {
+          errorMessage.textContent = 'Credenciales incorrectas';
+          errorMessage.classList.remove('hidden');
+        }
+      });
+
+      logoutBtn.addEventListener('click', () => {
+        clearSession();
+        mainContent.classList.add('hidden');
+        loginScreen.classList.remove('hidden');
+        showToast('Sesión cerrada', 'success');
+      });
+
+      addCategoryBtn.addEventListener('click', addSaleItem);
+      saveSaleBtn.addEventListener('click', saveSale);
+      exportExcelBtn.addEventListener('click', exportToExcel);
+      clearAllBtn.addEventListener('click', clearAllItems);
+
+      viewSalesBtn.addEventListener('click', () => {
+        salesModal.classList.add('show');
+        loadSales();
+      });
+
+      closeSalesModal.addEventListener('click', () => salesModal.classList.remove('show'));
+      applyFilterBtn.addEventListener('click', loadSales);
+      clearFilterBtn.addEventListener('click', () => {
+        const todayStr = toYYYYMMDD(getBusinessDate());
+        startDateInput.value = todayStr;
+        endDateInput.value = todayStr;
+        storeFilter.value = 'all';
+        loadSales();
+      });
+      syncFirebaseBtn.addEventListener('click', syncAllSalesToFirebase);
+      
+      adminPanelBtn.addEventListener('click', () => {
+        adminModal.classList.add('show');
+        loadOnlineUsers();
+        loadAdminData();
+      });
+
+      closeAdminModal.addEventListener('click', () => adminModal.classList.remove('show'));
+      adminApplyFilter.addEventListener('click', loadAdminData);
+      adminClearFilter.addEventListener('click', () => {
+        const todayStr = toYYYYMMDD(getBusinessDate());
+        adminStartDate.value = todayStr;
+        adminEndDate.value = todayStr;
+        adminStoreFilter.value = 'all';
+        loadAdminData();
+      });
+      
+      adminExportAll.addEventListener('click', exportAllStores);
+      adminExportAllInOne.addEventListener('click', exportAllInOneExcel);
+      closeEditModal.addEventListener('click', () => editSaleModal.classList.remove('show'));
+      
+      decreaseQtyBtn.addEventListener('click', () => {
+        const current = parseInt(quantityInput.value) || 1;
+        if (current > 1) quantityInput.value = current - 1;
+      });
+      
+      increaseQtyBtn.addEventListener('click', () => {
+        const current = parseInt(quantityInput.value) || 1;
+        quantityInput.value = current + 1;
+      });
+      
+      addEditItemBtn.addEventListener('click', () => {
+        const itemElement = document.createElement('div');
+        itemElement.className = 'edit-item-row';
+        itemElement.innerHTML = `
+          <select class="p-2 border border-gray-300 rounded-lg flex-1 edit-item-category">
+            <option value="Articulos">Artículos</option>
+            <option value="Articulos (P)">Artículos (P)</option>
+            <option value="Bisuteria">Bisutería</option>
+            <option value="Bisuteria (P)">Bisutería (P)</option>
+            <option value="Zapato">Zapato</option>
+            <option value="Zapato (P)">Zapato (P)</option>
+            <option value="Prenda">Prenda</option>
+            <option value="Prenda (P)">Prenda (P)</option>
+            <option value="B.Eco">B.Eco</option>
+            <option value="Articulos (v)">Artículos (v)</option>
+            <option value="Articulos (P) (v)">Artículos (P) (v)</option>
+            <option value="Bisuteria (v)">Bisutería (v)</option>
+            <option value="Bisuteria (P) (v)">Bisutería (P) (v)</option>
+            <option value="Zapato (v)">Zapato (v)</option>
+            <option value="Zapato (P) (v)">Zapato (P) (v)</option>
+            <option value="Prenda (v)">Prenda (v)</option>
+            <option value="Prenda (P) (v)">Prenda (P) (v)</option>
+            <option value="B.Eco (v)">B.Eco (v)</option>
+          </select>
+          <input type="number" min="1" value="1" class="w-20 p-2 border border-gray-300 rounded-lg edit-item-quantity">
+          <button class="remove-edit-item bg-red-100 text-red-600 p-2 rounded-lg"><i class="fas fa-trash"></i></button>
+        `;
+        editItemsContainer.appendChild(itemElement);
+        itemElement.querySelector('.remove-edit-item').addEventListener('click', () => itemElement.remove());
+      });
+      
+      saveEditBtn.addEventListener('click', saveEditedSale);
+      deleteSaleBtn.addEventListener('click', () => {
+          if (confirm('żEstás seguro de eliminar esta venta? Esta acción no se puede deshacer.')) {
+              deleteSale();
+          }
+      });
+      
+      analyticsBtn.addEventListener('click', () => {
+        analyticsModal.classList.add('show');
+        updateAnalyticsStats();
+      });
+      
+      closeAnalyticsModal.addEventListener('click', () => analyticsModal.classList.remove('show'));
+      
+      adminAnalyticsBtn.addEventListener('click', showAdminAnalytics);
+      closeAdminAnalyticsModal.addEventListener('click', () => adminAnalyticsModal.classList.remove('show'));
+      adminAnalyticsStoreFilter.addEventListener('change', updateAdminAnalyticsView);
+
+      adminItemsInspectionBtn.addEventListener('click', showAdminItemsInspection);
+      closeAdminItemsInspectionModal.addEventListener('click', () => adminItemsInspectionModal.classList.remove('show'));
+      inspectionApplyFilter.addEventListener('click', loadAdminItemsInspection);
+
+      updateSaleItemsDisplay();
+      
+      const events = ['mousemove', 'keydown', 'click', 'scroll'];
+      events.forEach(event => document.addEventListener(event, resetInactivityTimer));
+    });
+  })();
+  </script>
+</body>
+</html>
