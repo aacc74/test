@@ -62,13 +62,9 @@ function showNotification(message, type = 'info') {
 
 // Main function to render reports for a given range
 function renderReportsForRange(range) {
-  // Early return if no data
   if (!reportsOrdersCache) return;
-  
   const now = new Date();
   let start;
-  
-  // Compute start/end for ranges
   if (range === 'today') {
     start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
   } else if (range === '7d') {
@@ -78,7 +74,6 @@ function renderReportsForRange(range) {
   }
   const end = now;
 
-  // Filter orders using parseOrderDate and skip invalid dates
   const filtered = reportsOrdersCache.filter(o => {
     const d = parseOrderDate(o);
     if (!d) return false;
