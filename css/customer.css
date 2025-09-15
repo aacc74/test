@@ -1,0 +1,15 @@
+/* Customer-specific styles */
+
+.customer-container {
+  padding: var(--container-padding);
+  border-radius: var(--radius);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (max-width: 640px) {
+  .customer-container {
+    padding: var(--space-3);
+    border-radius: var(--radius-sm);
+  }
+}
